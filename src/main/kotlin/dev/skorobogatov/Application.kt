@@ -50,6 +50,7 @@ fun Application.module() {
     configureSerialization()
     configureHTTP()
     configureStatusPages()
+    configureStaticContent()
     configureRouting(claudeService)
 
     // Логирование при старте

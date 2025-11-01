@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - Claude Assistant</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Chat Assistant</h1>
+            <p class="subtitle">Powered by Claude Sonnet 4</p>
+        </header>
+
+        <div class="chat-container">
+            <div id="messages" class="messages">
+                <div class="message assistant">
+                    <div class="message-content">
+                        <strong>Assistant:</strong> Привет! Я готов помочь вам. Задайте любой вопрос.
+                    </div>
+                </div>
+            </div>
+
+            <form id="chatForm" class="input-form">
+                <input
+                    type="text"
+                    id="messageInput"
+                    placeholder="Напишите сообщение..."
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit" id="sendButton">
+                    Отправить
+                </button>
+            </form>
+        </div>
+
+        <footer>
+            <p>AI Chat Service | REST API at <code>/api/chat</code></p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

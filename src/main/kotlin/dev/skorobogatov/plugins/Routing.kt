@@ -8,10 +8,6 @@ import io.ktor.server.routing.*
 
 fun Application.configureRouting(claudeService: ClaudeService) {
     routing {
-        get("/") {
-            call.respondText("AI Chat Service is running. API available at /api/chat")
-        }
-
         chatRoutes(claudeService)
     }
 }
