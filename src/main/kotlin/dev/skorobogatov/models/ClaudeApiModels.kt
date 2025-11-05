@@ -8,7 +8,8 @@ import kotlinx.serialization.Serializable
 data class ClaudeApiRequest(
     val model: String,
     val max_tokens: Int,
-    val messages: List<ClaudeMessage>
+    val messages: List<ClaudeMessage>,
+    val system: String? = null
 )
 
 @Serializable

@@ -78,23 +78,54 @@ export ANTHROPIC_API_KEY="sk-ant-api03-..."
 **Request:**
 ```json
 {
-  "message": "Что такое Kotlin coroutines?"
+  "message": "Что такое Kotlin coroutines?",
+  "systemPrompt": "Отвечай кратко, максимум 2 предложения" // опционально
 }
 ```
 
-**Response:**
+**Response (с дефолтным промптом):**
+```json
+{
+  "response": "{\"question\": \"Что такое Kotlin coroutines?\", \"answer\": \"Kotlin coroutines - это мощный инструмент для асинхронного программирования, который позволяет писать неблокирующий код в последовательном стиле.\", \"tags\": [\"kotlin\", \"coroutines\", \"async\", \"concurrency\"]}",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+**Response (если отключить дефолтный промпт):**
 ```json
 {
   "response": "Kotlin coroutines - это мощный инструмент для асинхронного программирования...",
-  "model": "claude-3-5-sonnet-20241022"
+  "model": "claude-sonnet-4-20250514"
 }
 ```
 
-**Пример с curl:**
+**Пример с curl (базовый, использует дефолтный JSON формат):**
 ```bash
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Привет! Расскажи про себя"}'
+  -d '{"message": "Что такое Kotlin?"}'
+
+# Ответ будет в JSON формате: {question, answer, tags}
+```
+
+**Пример с переопределением systemPrompt (текстовый ответ):**
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Расскажи про Kotlin",
+    "systemPrompt": "Отвечай обычным текстом, кратко и по делу"
+  }'
+```
+
+**Пример с кастомным JSON форматом:**
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Какая погода в Москве?",
+    "systemPrompt": "Отвечай только в формате JSON с полями: city, temperature, condition, humidity"
+  }'
 ```
 
 **Пример с httpie:**
@@ -153,8 +184,63 @@ claude {
     apiUrl = "..."                 # URL Anthropic API
     model = "claude-3-5-sonnet-20241022"  # Модель Claude
     maxTokens = 1024              # Максимум токенов в ответе
+    systemPrompt = "..."          # Системный промпт по умолчанию (опционально)
 }
 ```
+
+### Системный промпт
+
+Сервис поддерживает системные промпты для форматирования ответов Claude.
+
+**Дефолтный промпт:**
+
+По умолчанию все ответы возвращаются в формате JSON:
+```json
+{
+  "question": "вопрос пользователя",
+  "answer": "ответ Claude",
+  "tags": ["тег1", "тег2", "тег3"]
+}
+```
+
+**1. Глобальный промпт (через конфигурацию)**
+
+Переопределяет дефолтный промпт для всех запросов:
+
+```bash
+export CLAUDE_SYSTEM_PROMPT="Отвечай всегда кратко, максимум 50 слов"
+./gradlew run
+```
+
+**2. Промпт в запросе (переопределяет глобальный и дефолтный)**
+
+Передается в каждом запросе через поле `systemPrompt`:
+
+```json
+{
+  "message": "Что такое Kotlin?",
+  "systemPrompt": "Отвечай кратко, максимум 100 слов"
+}
+```
+
+**Приоритет:** Промпт из запроса → Глобальный промпт (CLAUDE_SYSTEM_PROMPT) → Дефолтный промпт (JSON формат)
+
+**Примеры использования:**
+
+- Форматирование в JSON:
+  ```json
+  {"systemPrompt": "Отвечай только в формате JSON: {answer: string, tags: string[]}"}
+  ```
+
+- Краткие ответы:
+  ```json
+  {"systemPrompt": "Отвечай максимально кратко, одним предложением"}
+  ```
+
+- Специфический стиль:
+  ```json
+  {"systemPrompt": "Ты - эксперт по Kotlin. Отвечай технически точно с примерами кода"}
+  ```
 
 ## Разработка
 

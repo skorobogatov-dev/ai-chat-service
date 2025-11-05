@@ -24,7 +24,7 @@ fun Route.chatRoutes(claudeService: ClaudeService) {
 
                 logger.info("Received chat request with message length: ${request.message.length}")
 
-                val response = claudeService.sendMessage(request.message)
+                val response = claudeService.sendMessage(request.message, request.systemPrompt)
                 call.respond(HttpStatusCode.OK, response)
             } catch (e: Exception) {
                 logger.error("Error processing chat request", e)

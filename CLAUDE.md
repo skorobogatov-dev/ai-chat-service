@@ -19,12 +19,21 @@ AI Chat Service - REST API сервис на Ktor для взаимодейст�
 ### Configuration
 - Установить ANTHROPIC_API_KEY через environment или в `src/main/resources/application.conf`
 - Сервер запускается на порту 8080 (настраивается в application.conf)
+- По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 
 ### Testing API
 ```bash
+# Базовый запрос (использует дефолтный JSON формат)
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Привет!"}'
+
+# Ответ: {"question": "Привет!", "answer": "...", "tags": [...]}
+
+# С переопределением системного промпта
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Что такое Kotlin?", "systemPrompt": "Отвечай обычным текстом"}'
 ```
 
 ## Architecture Overview
@@ -44,6 +53,8 @@ curl -X POST http://localhost:8080/api/chat \
 
 **ClaudeService** - Инкапсулирует логику работы с Anthropic API:
 - Формирует запросы в формате Claude Messages API
+- Поддерживает системные промпты (встроенный JSON формат → env переменная → переопределение в запросе)
+- Дефолтный промпт: возвращает все ответы в JSON формате {question, answer, tags}
 - Обрабатывает ошибки и логирует usage statistics
 - Возвращает упрощенные ChatResponse объекты
 
@@ -55,7 +66,9 @@ curl -X POST http://localhost:8080/api/chat \
 
 ### Data Models
 - `ChatRequest/ChatResponse` - публичные API DTOs
+  - `ChatRequest` содержит `message` и опциональный `systemPrompt`
 - `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
+  - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
 
 ### Design Decisions
 - **Stateless architecture** - нет сохранения истории диалогов

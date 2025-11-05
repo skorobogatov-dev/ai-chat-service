@@ -22,6 +22,19 @@ fun Application.module() {
     val model = environment.config.property("claude.model").getString()
     val maxTokens = environment.config.property("claude.maxTokens").getString().toInt()
 
+    // Системный промпт с дефолтным значением
+    val defaultSystemPrompt = """
+        You must respond ONLY with valid JSON in this exact format:
+        {"question": "user's question", "answer": "your detailed answer", "tags": ["tag1", "tag2", "tag3"]}
+
+        Rules:
+        - question: repeat the user's question
+        - answer: provide a comprehensive answer
+        - tags: 3-5 relevant keywords related to the question and answer
+        - Never include any text outside the JSON structure
+    """.trimIndent()
+    val systemPrompt = environment.config.propertyOrNull("claude.systemPrompt")?.getString() ?: defaultSystemPrompt
+
     // Создание HTTP клиента для запросов к Anthropic API
     val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -43,7 +56,8 @@ fun Application.module() {
         apiKey = apiKey,
         apiUrl = apiUrl,
         model = model,
-        maxTokens = maxTokens
+        maxTokens = maxTokens,
+        defaultSystemPrompt = systemPrompt
     )
 
     // Конфигурация плагинов

@@ -13,12 +13,20 @@ class ClaudeService(
     private val apiKey: String,
     private val apiUrl: String,
     private val model: String,
-    private val maxTokens: Int
+    private val maxTokens: Int,
+    private val defaultSystemPrompt: String? = null
 ) {
     private val logger = LoggerFactory.getLogger(ClaudeService::class.java)
 
-    suspend fun sendMessage(userMessage: String): ChatResponse {
+    suspend fun sendMessage(userMessage: String, systemPrompt: String? = null): ChatResponse {
         logger.debug("Sending message to Claude API: $userMessage")
+
+        // Используем переданный systemPrompt, если есть, иначе дефолтный
+        val effectiveSystemPrompt = systemPrompt ?: defaultSystemPrompt
+
+        if (effectiveSystemPrompt != null) {
+            logger.debug("Using system prompt: $effectiveSystemPrompt")
+        }
 
         val request = ClaudeApiRequest(
             model = model,
@@ -28,7 +36,8 @@ class ClaudeService(
                     role = "user",
                     content = userMessage
                 )
-            )
+            ),
+            system = effectiveSystemPrompt
         )
 
         return try {
