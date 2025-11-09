@@ -28,7 +28,7 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
-        assertTrue(body.contains("AI Chat Assistant"))
+        assertTrue(body.contains("Многоэкспертная консультация"))
     }
 
     @Test

@@ -25,11 +25,29 @@ class ClaudeServiceTest {
     @Test
     fun `test successful API response`() = runBlocking {
         // Given
+        val expertResponseJson = """
+        {
+          "question": "Hello",
+          "experts": [
+            {
+              "expertRole": "Business Manager",
+              "expertName": "Алекс Петров",
+              "response": "Business perspective response"
+            },
+            {
+              "expertRole": "Software Developer",
+              "expertName": "Дмитрий Козлов",
+              "response": "Technical perspective response"
+            }
+          ]
+        }
+        """.trimIndent()
+
         val mockResponse = ClaudeApiResponse(
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Hello from Claude!")),
+            content = listOf(ClaudeContent(type = "text", text = expertResponseJson)),
             model = "claude-sonnet-4-20250514",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -65,7 +83,10 @@ class ClaudeServiceTest {
         val result = claudeService.sendMessage("Hello")
 
         // Then
-        assertEquals("Hello from Claude!", result.response)
+        assertEquals("Hello", result.question)
+        assertEquals(2, result.experts.size)
+        assertEquals("Business Manager", result.experts[0].expertRole)
+        assertEquals("Алекс Петров", result.experts[0].expertName)
         assertEquals("claude-sonnet-4-20250514", result.model)
 
         httpClient.close()
@@ -191,11 +212,24 @@ class ClaudeServiceTest {
         // Given
         var capturedRequestBody: String? = null
 
+        val expertResponseJson = """
+        {
+          "question": "Test message",
+          "experts": [
+            {
+              "expertRole": "Test Expert",
+              "expertName": "Test Name",
+              "response": "Test response"
+            }
+          ]
+        }
+        """.trimIndent()
+
         val mockResponse = ClaudeApiResponse(
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Response")),
+            content = listOf(ClaudeContent(type = "text", text = expertResponseJson)),
             model = "claude-sonnet-4-20250514",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)

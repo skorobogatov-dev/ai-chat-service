@@ -6,6 +6,8 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 import org.slf4j.LoggerFactory
 
 class ClaudeService(
@@ -17,6 +19,28 @@ class ClaudeService(
     private val defaultSystemPrompt: String? = null
 ) {
     private val logger = LoggerFactory.getLogger(ClaudeService::class.java)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Очищает JSON от markdown форматирования (например, ```json ... ```)
+     */
+    private fun cleanJsonFromMarkdown(text: String): String {
+        var cleaned = text.trim()
+
+        // Удаляем markdown код-блок с языком
+        if (cleaned.startsWith("```json")) {
+            cleaned = cleaned.removePrefix("```json").trim()
+        } else if (cleaned.startsWith("```")) {
+            cleaned = cleaned.removePrefix("```").trim()
+        }
+
+        // Удаляем закрывающий ```
+        if (cleaned.endsWith("```")) {
+            cleaned = cleaned.removeSuffix("```").trim()
+        }
+
+        return cleaned
+    }
 
     suspend fun sendMessage(userMessage: String, systemPrompt: String? = null): ChatResponse {
         logger.debug("Sending message to Claude API: $userMessage")
@@ -57,10 +81,15 @@ class ClaudeService(
                     logger.debug("Received response from Claude API")
                     logger.debug("Usage: ${apiResponse.usage}")
 
-                    ChatResponse(
-                        response = messageText,
-                        model = apiResponse.model
-                    )
+                    // Очищаем JSON от markdown форматирования
+                    val cleanedJson = cleanJsonFromMarkdown(messageText)
+                    logger.debug("Cleaned JSON: ${cleanedJson.take(200)}...")
+
+                    // Парсим JSON ответ от Claude
+                    val parsedResponse = json.decodeFromString<ChatResponse>(cleanedJson)
+
+                    // Возвращаем структуру с информацией о модели
+                    parsedResponse.copy(model = apiResponse.model)
                 }
                 else -> {
                     val errorBody = response.bodyAsText()

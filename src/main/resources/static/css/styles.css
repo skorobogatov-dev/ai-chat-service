@@ -113,6 +113,43 @@ header h1 {
     clear: both;
 }
 
+.message.expert .message-content {
+    background: white;
+    color: #333;
+    float: left;
+    clear: both;
+    border: 2px solid #667eea;
+    max-width: 85%;
+    padding: 16px;
+}
+
+.expert-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.expert-role {
+    color: #667eea;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.expert-name {
+    color: #666;
+    font-size: 13px;
+    font-style: italic;
+}
+
+.expert-response {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+}
+
 .message strong {
     display: block;
     margin-bottom: 4px;

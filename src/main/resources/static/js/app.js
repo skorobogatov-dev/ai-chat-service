@@ -40,8 +40,15 @@ class ChatApp {
             // Hide loading indicator
             this.hideLoadingIndicator();
 
-            // Add assistant response to chat
-            this.addMessage(response.response, 'assistant');
+            // Add expert responses to chat - each expert as a separate message
+            if (response.experts && Array.isArray(response.experts)) {
+                response.experts.forEach(expert => {
+                    this.addExpertMessage(expert);
+                });
+            } else {
+                // Fallback if response format is unexpected
+                this.addMessage(JSON.stringify(response), 'assistant');
+            }
         } catch (error) {
             // Hide loading indicator
             this.hideLoadingIndicator();
@@ -85,6 +92,33 @@ class ChatApp {
         const label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
         contentDiv.innerHTML = `<strong>${label}:</strong> ${this.escapeHtml(text)}`;
 
+        messageDiv.appendChild(contentDiv);
+        this.messagesContainer.appendChild(messageDiv);
+
+        // Scroll to bottom
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    addExpertMessage(expert) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message expert';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+
+        const expertHeader = document.createElement('div');
+        expertHeader.className = 'expert-header';
+        expertHeader.innerHTML = `
+            <strong class="expert-role">${this.escapeHtml(expert.expertRole)}</strong>
+            <span class="expert-name">${this.escapeHtml(expert.expertName)}</span>
+        `;
+
+        const expertResponse = document.createElement('div');
+        expertResponse.className = 'expert-response';
+        expertResponse.textContent = expert.response;
+
+        contentDiv.appendChild(expertHeader);
+        contentDiv.appendChild(expertResponse);
         messageDiv.appendChild(contentDiv);
         this.messagesContainer.appendChild(messageDiv);
 
