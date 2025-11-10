@@ -9,7 +9,8 @@ data class ClaudeApiRequest(
     val model: String,
     val max_tokens: Int,
     val messages: List<ClaudeMessage>,
-    val system: String? = null
+    val system: String? = null,
+    val temperature: Double? = null
 )
 
 @Serializable

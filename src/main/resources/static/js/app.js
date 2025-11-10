@@ -5,6 +5,8 @@ class ChatApp {
         this.chatForm = document.getElementById('chatForm');
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
+        this.temperatureSlider = document.getElementById('temperatureSlider');
+        this.temperatureValue = document.getElementById('temperatureValue');
         this.loadingIndicator = null;
 
         this.init();
@@ -12,7 +14,12 @@ class ChatApp {
 
     init() {
         this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+        this.temperatureSlider.addEventListener('input', (e) => this.updateTemperatureDisplay(e));
         this.messageInput.focus();
+    }
+
+    updateTemperatureDisplay(event) {
+        this.temperatureValue.textContent = parseFloat(event.target.value).toFixed(1);
     }
 
     async handleSubmit(event) {
@@ -24,9 +31,6 @@ class ChatApp {
         // Disable input while processing
         this.setInputState(false);
 
-        // Add user message to chat
-        this.addMessage(message, 'user');
-
         // Clear input
         this.messageInput.value = '';
 
@@ -34,14 +38,20 @@ class ChatApp {
         this.showLoadingIndicator();
 
         try {
+            // Get temperature value
+            const temperature = parseFloat(this.temperatureSlider.value);
+
+            // Add user message
+            this.addMessage(message, 'user');
+
             // Send message to API
-            const response = await this.sendMessage(message);
+            const response = await this.sendMessage(message, temperature);
 
             // Hide loading indicator
             this.hideLoadingIndicator();
 
-            // Add assistant response to chat
-            this.addMessage(response.response, 'assistant');
+            // Add assistant response with temperature badge
+            this.addMessage(response.response, 'assistant', temperature);
         } catch (error) {
             // Hide loading indicator
             this.hideLoadingIndicator();
@@ -58,13 +68,23 @@ class ChatApp {
         }
     }
 
-    async sendMessage(message) {
+    async sendMessage(message, temperature) {
+        const requestBody = {
+            message,
+            systemPrompt: "Отвечай обычным текстом, без JSON форматирования. Будь естественным и дружелюбным."
+        };
+
+        // Only include temperature if it's not the default value
+        if (temperature !== undefined && temperature !== null) {
+            requestBody.temperature = temperature;
+        }
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ message })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -75,7 +95,22 @@ class ChatApp {
         return await response.json();
     }
 
-    addMessage(text, type) {
+    createTemperatureBadge(temperature) {
+        let tempClass = 'temp-medium';
+        let tempLabel = 'Сбалансированная';
+
+        if (temperature <= 0.3) {
+            tempClass = 'temp-low';
+            tempLabel = 'Точная';
+        } else if (temperature >= 0.7) {
+            tempClass = 'temp-high';
+            tempLabel = 'Креативная';
+        }
+
+        return `<span class="temperature-badge ${tempClass}" title="Temperature: ${temperature}">${tempLabel} (${temperature})</span>`;
+    }
+
+    addMessage(text, type, temperature = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
@@ -83,7 +118,22 @@ class ChatApp {
         contentDiv.className = 'message-content';
 
         const label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
-        contentDiv.innerHTML = `<strong>${label}:</strong> ${this.escapeHtml(text)}`;
+
+        // Format text with line breaks
+        const formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
+
+        // Add temperature badge only for assistant messages
+        const tempBadge = (type === 'assistant' && temperature !== null)
+            ? this.createTemperatureBadge(temperature)
+            : '';
+
+        contentDiv.innerHTML = `
+            <div class="message-header">
+                <strong>${label}</strong>
+                ${tempBadge}
+            </div>
+            <div class="message-text">${formattedText}</div>
+        `;
 
         messageDiv.appendChild(contentDiv);
         this.messagesContainer.appendChild(messageDiv);

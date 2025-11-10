@@ -17,22 +17,48 @@
             <div id="messages" class="messages">
                 <div class="message assistant">
                     <div class="message-content">
-                        <strong>Assistant:</strong> Привет! Я готов помочь вам. Задайте любой вопрос.
+                        <div class="message-header">
+                            <strong>Assistant</strong>
+                        </div>
+                        <div class="message-text">
+                            Привет! Я готов помочь вам. Задайте любой вопрос и настройте креативность ответа с помощью слайдера Temperature.
+                        </div>
                     </div>
                 </div>
             </div>
 
             <form id="chatForm" class="input-form">
-                <input
-                    type="text"
-                    id="messageInput"
-                    placeholder="Напишите сообщение..."
-                    autocomplete="off"
-                    required
-                >
-                <button type="submit" id="sendButton">
-                    Отправить
-                </button>
+                <div class="settings-panel">
+                    <label for="temperatureSlider" class="temperature-label">
+                        <span class="label-text">Креативность (Temperature):</span>
+                        <span id="temperatureValue" class="temperature-value">0.7</span>
+                    </label>
+                    <input
+                        type="range"
+                        id="temperatureSlider"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value="0.7"
+                        class="temperature-slider"
+                    >
+                    <div class="temperature-hints">
+                        <span class="hint-left">Точный (0.0)</span>
+                        <span class="hint-right">Креативный (1.0)</span>
+                    </div>
+                </div>
+                <div class="input-row">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Напишите сообщение..."
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit" id="sendButton">
+                        Отправить
+                    </button>
+                </div>
             </form>
         </div>
 

@@ -34,6 +34,26 @@ curl -X POST http://localhost:8080/api/chat \
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Что такое Kotlin?", "systemPrompt": "Отвечай обычным текстом"}'
+
+# С параметром temperature для управления креативностью ответов (0.0-1.0)
+# По умолчанию Claude использует temperature = 1.0
+# Низкая temperature (0.0-0.3) - более предсказуемые и консервативные ответы
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Напиши стихотворение", "temperature": 0.0}'
+
+# Средняя temperature (0.5) - сбалансированное поведение
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Напиши стихотворение", "temperature": 0.5}'
+
+# Высокая temperature (1.0) - максимальная креативность и разнообразие
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Напиши стихотворение", "temperature": 1.0}'
+
+# Тестирование влияния temperature
+./test_temperature.sh
 ```
 
 ## Architecture Overview
@@ -66,9 +86,23 @@ curl -X POST http://localhost:8080/api/chat \
 
 ### Data Models
 - `ChatRequest/ChatResponse` - публичные API DTOs
-  - `ChatRequest` содержит `message` и опциональный `systemPrompt`
+  - `ChatRequest` содержит:
+    - `message` (обязательное) - текст сообщения пользователя
+    - `systemPrompt` (опциональное) - переопределение системного промпта
+    - `temperature` (опциональное, 0.0-1.0) - контроль степени креативности ответов
+      - **0.0** - максимально предсказуемые ответы (для аналитических задач)
+      - **0.5** - сбалансированное поведение
+      - **1.0** - максимальная креативность (по умолчанию в Claude)
+      - Даже при 0.0 ответы не будут полностью детерминированными
 - `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
-  - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
+  - `ClaudeApiRequest` поддерживает опциональные поля `system` и `temperature`
+
+### Testing Temperature
+Для проверки влияния temperature на ответы используйте тестовый скрипт:
+```bash
+./test_temperature.sh
+```
+Скрипт отправит одинаковый запрос с разными значениями temperature (0.0, 0.5, 1.0) и покажет разницу в ответах.
 
 ### Design Decisions
 - **Stateless architecture** - нет сохранения истории диалогов

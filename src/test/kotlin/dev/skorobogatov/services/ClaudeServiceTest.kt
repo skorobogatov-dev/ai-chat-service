@@ -6,7 +6,9 @@ import dev.skorobogatov.models.ClaudeUsage
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
 import io.ktor.http.*
+import io.ktor.http.content.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.runBlocking
@@ -230,6 +232,96 @@ class ClaudeServiceTest {
 
         // Then
         assertNotNull(capturedRequestBody)
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test temperature parameter is sent with message`() = runBlocking {
+        // Given
+        val mockResponse = ClaudeApiResponse(
+            id = "msg_123",
+            type = "message",
+            role = "assistant",
+            content = listOf(ClaudeContent(type = "text", text = "Creative response")),
+            model = "claude-sonnet-4-20250514",
+            stop_reason = "end_turn",
+            usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
+        )
+
+        val mockEngine = MockEngine { request ->
+            respond(
+                content = ByteReadChannel(json.encodeToString(mockResponse)),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) {
+                json(json)
+            }
+        }
+
+        val claudeService = ClaudeService(
+            httpClient = httpClient,
+            apiKey = "test-api-key",
+            apiUrl = "https://api.anthropic.com/v1/messages",
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024
+        )
+
+        // When
+        val result = claudeService.sendMessage("Test message", temperature = 0.8)
+
+        // Then
+        assertEquals("Creative response", result.response)
+        assertEquals("claude-sonnet-4-20250514", result.model)
+
+        httpClient.close()
+    }
+
+    @Test
+    fun `test service works without temperature parameter`() = runBlocking {
+        // Given
+        val mockResponse = ClaudeApiResponse(
+            id = "msg_123",
+            type = "message",
+            role = "assistant",
+            content = listOf(ClaudeContent(type = "text", text = "Response")),
+            model = "claude-sonnet-4-20250514",
+            stop_reason = "end_turn",
+            usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
+        )
+
+        val mockEngine = MockEngine { request ->
+            respond(
+                content = ByteReadChannel(json.encodeToString(mockResponse)),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+
+        val httpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) {
+                json(json)
+            }
+        }
+
+        val claudeService = ClaudeService(
+            httpClient = httpClient,
+            apiKey = "test-api-key",
+            apiUrl = "https://api.anthropic.com/v1/messages",
+            model = "claude-sonnet-4-20250514",
+            maxTokens = 1024
+        )
+
+        // When
+        val result = claudeService.sendMessage("Test message")
+
+        // Then
+        assertEquals("Response", result.response)
+        assertEquals("claude-sonnet-4-20250514", result.model)
 
         httpClient.close()
     }

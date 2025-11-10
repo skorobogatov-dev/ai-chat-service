@@ -22,9 +22,15 @@ fun Route.chatRoutes(claudeService: ClaudeService) {
                     return@post
                 }
 
+                // Validate temperature range (Claude API accepts 0.0 to 1.0)
+                if (request.temperature != null && (request.temperature < 0.0 || request.temperature > 1.0)) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Temperature must be between 0.0 and 1.0"))
+                    return@post
+                }
+
                 logger.info("Received chat request with message length: ${request.message.length}")
 
-                val response = claudeService.sendMessage(request.message, request.systemPrompt)
+                val response = claudeService.sendMessage(request.message, request.systemPrompt, request.temperature)
                 call.respond(HttpStatusCode.OK, response)
             } catch (e: Exception) {
                 logger.error("Error processing chat request", e)

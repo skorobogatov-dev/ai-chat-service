@@ -18,7 +18,7 @@ class ClaudeService(
 ) {
     private val logger = LoggerFactory.getLogger(ClaudeService::class.java)
 
-    suspend fun sendMessage(userMessage: String, systemPrompt: String? = null): ChatResponse {
+    suspend fun sendMessage(userMessage: String, systemPrompt: String? = null, temperature: Double? = null): ChatResponse {
         logger.debug("Sending message to Claude API: $userMessage")
 
         // Используем переданный systemPrompt, если есть, иначе дефолтный
@@ -26,6 +26,13 @@ class ClaudeService(
 
         if (effectiveSystemPrompt != null) {
             logger.debug("Using system prompt: $effectiveSystemPrompt")
+        }
+
+        // Логируем temperature для отладки
+        if (temperature != null) {
+            logger.info("Using temperature: $temperature")
+        } else {
+            logger.info("Using default temperature (Claude default: 1.0)")
         }
 
         val request = ClaudeApiRequest(
@@ -37,7 +44,8 @@ class ClaudeService(
                     content = userMessage
                 )
             ),
-            system = effectiveSystemPrompt
+            system = effectiveSystemPrompt,
+            temperature = temperature
         )
 
         return try {
