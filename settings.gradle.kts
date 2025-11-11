@@ -1,1 +1,22 @@
-rootProject.name = "ai-chat-service"
+rootProject.name = "ai-chat-kmp"
+
+include(":server")
+include(":shared")
+include(":composeApp")
+
+pluginManagement {
+    repositories {
+        google()
+        gradlePluginPortal()
+        mavenCentral()
+        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+    }
+}

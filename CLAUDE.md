@@ -4,20 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Chat Service - REST API сервис на Ktor для взаимодействия с Claude AI через Anthropic API.
+AI Chat Service - Kotlin Multiplatform проект с REST API сервером на Ktor и UI на Compose Multiplatform.
+
+**Модули:**
+- **server** (JVM) - Ktor REST API сервер для взаимодействия с Claude AI
+- **shared** (KMP: JVM + JS + Android) - Общие модели данных и API клиент
+- **composeApp** (JS + Android) - UI на Compose Multiplatform с таргетами для веба и Android
 
 ## Build and Development Commands
 
 ### Build and Run
 ```bash
-./gradlew build           # Сборка проекта
-./gradlew run             # Запуск в dev режиме
-./gradlew test            # Запуск тестов
-./gradlew installDist     # Production build
+# Сборка всех модулей
+./gradlew build
+
+# Запуск сервера (JVM)
+./gradlew :server:run         # Сервер на http://localhost:8080
+
+# Запуск Web версии (JS)
+./gradlew :composeApp:jsBrowserDevelopmentRun
+
+# Сборка Android версии
+./gradlew :composeApp:assembleDebug
+
+# Запуск тестов
+./gradlew test
+./gradlew :server:test        # Только серверные тесты
 ```
 
 ### Configuration
-- Установить ANTHROPIC_API_KEY через environment или в `src/main/resources/application.conf`
+- Установить ANTHROPIC_API_KEY через environment или в `server/src/main/resources/application.conf`
 - Сервер запускается на порту 8080 (настраивается в application.conf)
 - По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 
@@ -38,45 +54,68 @@ curl -X POST http://localhost:8080/api/chat \
 
 ## Architecture Overview
 
+### Module Structure
+
+**server/** (JVM)
+- `Application.kt` - Entry point, настройка Ktor сервера
+- `models/` - ClaudeApiModels (внутренние модели для Anthropic API)
+- `services/ClaudeService.kt` - Интеграция с Claude AI
+- `routes/ChatRoutes.kt` - REST API endpoints
+- `plugins/` - Ktor плагины (Serialization, CORS, StatusPages, Routing)
+
+**shared/** (KMP)
+- `commonMain/` - Общий код для всех платформ
+  - `models/` - ChatRequest, ChatResponse (публичные DTOs)
+  - `api/ChatApi.kt` - HTTP клиент для взаимодействия с сервером
+- `jvmMain/` - JVM-специфичный код (Ktor CIO client)
+- `jsMain/` - JS-специфичный код (Ktor JS client)
+- `androidMain/` - Android-специфичный код (Ktor Android client)
+
+**composeApp/** (Compose Multiplatform)
+- `commonMain/ui/App.kt` - Общий UI код на Compose
+  - Material 3 дизайн
+  - Chat интерфейс
+  - Состояния загрузки и ошибок
+- `jsMain/` - JS entry point (Canvas-based Compose)
+  - `main.kt` - Инициализация для браузера
+  - `resources/index.html` - HTML страница
+- `androidMain/` - Android entry point
+  - `MainActivity.kt` - Activity для Android приложения
+
 ### Request Flow
-1. HTTP запрос → ChatRoutes (routes/)
-2. ChatRoutes → ClaudeService (services/)
-3. ClaudeService → Anthropic API (через Ktor HTTP Client)
-4. Ответ от Claude → ChatResponse DTO → JSON → клиент
+1. UI (Compose) → ChatApi (shared) → HTTP запрос
+2. Server: ChatRoutes → ClaudeService → Anthropic API
+3. Anthropic API → ClaudeService → ChatResponse
+4. ChatResponse → ChatApi → UI (Compose)
 
 ### Key Components
 
-**Application.kt** - Entry point, инициализирует:
-- HTTP Client (CIO engine) для запросов к Anthropic
-- ClaudeService с конфигурацией из application.conf
-- Plugins (Serialization, CORS, StatusPages, Routing)
-
-**ClaudeService** - Инкапсулирует логику работы с Anthropic API:
+**ClaudeService** (server) - Работа с Anthropic API:
 - Формирует запросы в формате Claude Messages API
-- Поддерживает системные промпты (встроенный JSON формат → env переменная → переопределение в запросе)
-- Дефолтный промпт: возвращает все ответы в JSON формате {question, answer, tags}
+- Поддерживает системные промпты
 - Обрабатывает ошибки и логирует usage statistics
-- Возвращает упрощенные ChatResponse объекты
 
-**Plugins** - Модульная конфигурация Ktor:
-- Serialization: kotlinx.serialization для JSON
-- HTTP: CORS для кросс-доменных запросов
-- StatusPages: глобальная обработка исключений
-- Routing: регистрация всех routes
+**ChatApi** (shared) - HTTP клиент:
+- Ktor HTTP Client настроен для каждой платформы
+- Единый API для всех платформ
+- Сериализация/десериализация через kotlinx.serialization
 
-### Data Models
-- `ChatRequest/ChatResponse` - публичные API DTOs
-  - `ChatRequest` содержит `message` и опциональный `systemPrompt`
-- `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
-  - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
+**App.kt** (composeApp) - UI компонент:
+- Список сообщений с автоскроллом
+- Поле ввода и кнопка отправки
+- Индикаторы загрузки
+- Обработка ошибок
 
 ### Design Decisions
-- **Stateless architecture** - нет сохранения истории диалогов
-- **Single responsibility** - ClaudeService только для AI интеграции
-- **Configuration over code** - все настройки в application.conf
-- **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
+- **Kotlin Multiplatform** - единый код для JVM, JS и Android
+- **Compose Multiplatform** - общий UI код для всех платформ
+- **Stateless server** - нет сохранения истории диалогов
+- **Модульная архитектура** - разделение на server, shared и composeApp
+- **Type-safe** - строгая типизация через Kotlin
 
 ## External Dependencies
-- Anthropic Claude API (requires API key)
-- Ktor Server (Netty engine)
-- Ktor Client (CIO engine)
+- Kotlin 2.0.20
+- Ktor 2.3.12 (Server + Client)
+- Compose Multiplatform 1.7.0
+- kotlinx.serialization
+- Anthropic Claude API
