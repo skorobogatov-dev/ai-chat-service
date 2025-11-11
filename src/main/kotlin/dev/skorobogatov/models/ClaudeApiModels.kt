@@ -52,3 +52,10 @@ data class ClaudeError(
     val type: String,
     val message: String
 )
+
+@Serializable
+data class ClaudeJsonResponse(
+    val question: String? = null,
+    val answer: String,
+    val tags: List<String>? = null
+)

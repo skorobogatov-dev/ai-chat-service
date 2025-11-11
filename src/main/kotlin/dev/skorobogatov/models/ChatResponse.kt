@@ -5,5 +5,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ChatResponse(
     val response: String,
-    val model: String
+    val model: String,
+    val inputTokens: Int,
+    val outputTokens: Int,
+    val totalTokens: Int,
+    val responseTimeMs: Long
 )
