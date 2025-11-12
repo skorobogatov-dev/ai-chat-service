@@ -30,6 +30,28 @@
                         <option value="claude-sonnet-4-20250514" selected>Sonnet 4 (Самая продвинутая)</option>
                     </select>
                 </div>
+
+                <div class="quick-questions">
+                    <label class="quick-questions-label">Попробуйте:</label>
+                    <div class="quick-questions-buttons">
+                        <button type="button" class="quick-question-btn" data-size="short">
+                            <span class="btn-icon">⚡</span>
+                            <span class="btn-text">Короткий ответ</span>
+                            <span class="btn-hint">&lt; 200 токенов</span>
+                        </button>
+                        <button type="button" class="quick-question-btn" data-size="medium">
+                            <span class="btn-icon">📝</span>
+                            <span class="btn-text">Средний ответ</span>
+                            <span class="btn-hint">&lt; 1000 токенов</span>
+                        </button>
+                        <button type="button" class="quick-question-btn" data-size="long">
+                            <span class="btn-icon">📚</span>
+                            <span class="btn-text">Длинный ответ</span>
+                            <span class="btn-hint">&gt; 2048 токенов</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="input-row">
                     <input
                         type="text"

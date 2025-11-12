@@ -161,6 +161,74 @@ header h1 {
     border-color: #667eea;
 }
 
+.quick-questions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.quick-questions-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.quick-questions-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.quick-question-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.quick-question-btn:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.quick-question-btn:hover .btn-text,
+.quick-question-btn:hover .btn-hint {
+    color: white;
+}
+
+.quick-question-btn:active {
+    transform: translateY(0);
+}
+
+.btn-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.btn-text {
+    font-weight: 600;
+    color: #333;
+    transition: color 0.2s;
+}
+
+.btn-hint {
+    font-size: 10px;
+    color: #888;
+    font-weight: 400;
+    transition: color 0.2s;
+}
+
 .input-row {
     display: flex;
     gap: 12px;
@@ -367,6 +435,14 @@ footer code {
 
     #modelSelect {
         font-size: 13px;
+    }
+
+    .quick-questions-buttons {
+        flex-direction: column;
+    }
+
+    .quick-question-btn {
+        min-width: 100%;
     }
 
     #sendButton {

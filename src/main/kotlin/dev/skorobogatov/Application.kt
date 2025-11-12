@@ -6,6 +6,7 @@ import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
+import io.ktor.client.plugins.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.netty.*
@@ -47,6 +48,11 @@ fun Application.module() {
         install(Logging) {
             logger = Logger.DEFAULT
             level = LogLevel.INFO
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 300_000  // 5 минут для длинных ответов
+            connectTimeoutMillis = 30_000   // 30 секунд для подключения
+            socketTimeoutMillis = 300_000   // 5 минут для чтения данных
         }
     }
 
