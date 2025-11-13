@@ -23,13 +23,16 @@ class ClaudeService(
         isLenient = true
     }
 
+    /**
+     * Отправить сообщение с учетом истории диалога
+     */
     suspend fun sendMessage(
-        userMessage: String,
+        messages: List<ClaudeMessage>,
         systemPrompt: String? = null,
         requestModel: String? = null
     ): ChatResponse {
         val startTime = System.currentTimeMillis()
-        logger.debug("Sending message to Claude API: $userMessage")
+        logger.debug("Sending ${messages.size} messages to Claude API")
 
         // Используем переданную модель, если есть, иначе дефолтную из конфигурации
         val effectiveModel = requestModel ?: model
@@ -45,12 +48,7 @@ class ClaudeService(
         val request = ClaudeApiRequest(
             model = effectiveModel,
             max_tokens = maxTokens,
-            messages = listOf(
-                ClaudeMessage(
-                    role = "user",
-                    content = userMessage
-                )
-            ),
+            messages = messages,
             system = effectiveSystemPrompt
         )
 
@@ -105,6 +103,57 @@ class ClaudeService(
         } catch (e: Exception) {
             logger.error("Error calling Claude API", e)
             throw Exception("Failed to get response from AI: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Создать summary для сжатия истории диалога
+     */
+    suspend fun createSummary(messages: List<ClaudeMessage>): String {
+        logger.debug("Creating summary for ${messages.size} messages")
+
+        val summaryPrompt = """
+            Создай краткое резюме следующего диалога на русском языке.
+            Сосредоточься на ключевых моментах, заданных вопросах и важной обсуждаемой информации.
+            Резюме должно быть кратким, но передавать суть диалога.
+
+            Диалог для резюмирования:
+            ${messages.joinToString("\n") { "${it.role}: ${it.content}" }}
+        """.trimIndent()
+
+        val summaryRequest = ClaudeApiRequest(
+            model = model,
+            max_tokens = 500, // Ограничиваем размер summary
+            messages = listOf(ClaudeMessage(role = "user", content = summaryPrompt)),
+            system = "Ты помощник, который создает краткие резюме диалогов на русском языке."
+        )
+
+        return try {
+            val response: HttpResponse = httpClient.post(apiUrl) {
+                header("x-api-key", apiKey)
+                header("anthropic-version", "2023-06-01")
+                contentType(ContentType.Application.Json)
+                setBody(summaryRequest)
+            }
+
+            when (response.status) {
+                HttpStatusCode.OK -> {
+                    val apiResponse: ClaudeApiResponse = response.body()
+                    val summary = apiResponse.content.firstOrNull()?.text
+                        ?: throw Exception("No content in summary response")
+
+                    logger.debug("Successfully created summary (${summary.length} chars)")
+                    summary
+                }
+                else -> {
+                    val errorBody = response.bodyAsText()
+                    logger.error("Failed to create summary: ${response.status} - $errorBody")
+                    throw Exception("Failed to create summary: ${response.status}")
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error creating summary", e)
+            throw Exception("Failed to create summary: ${e.message}", e)
         }
     }
 }

@@ -11,6 +11,9 @@
         <header>
             <h1>AI Chat Assistant</h1>
             <p class="subtitle">Powered by Claude AI</p>
+            <button id="viewHistoryButton" class="history-button" title="Просмотр истории диалога">
+                📜 История
+            </button>
         </header>
 
         <div class="chat-container">
@@ -48,6 +51,20 @@
         <footer>
             <p>AI Chat Service | REST API at <code>/api/chat</code></p>
         </footer>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>История диалога</h2>
+                <button class="close-button" id="closeModalButton">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="historyInfo" class="history-info"></div>
+                <div id="historyMessages" class="history-messages"></div>
+            </div>
+        </div>
     </div>
 
     <script src="/static/js/app.js"></script>

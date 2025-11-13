@@ -6,14 +6,28 @@ class ChatApp {
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
         this.modelSelect = document.getElementById('modelSelect');
+        this.viewHistoryButton = document.getElementById('viewHistoryButton');
+        this.historyModal = document.getElementById('historyModal');
+        this.closeModalButton = document.getElementById('closeModalButton');
         this.loadingIndicator = null;
+        this.sessionId = null; // Current session ID
 
         this.init();
     }
 
     init() {
         this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+        this.viewHistoryButton.addEventListener('click', () => this.viewHistory());
+        this.closeModalButton.addEventListener('click', () => this.closeModal());
+        this.historyModal.addEventListener('click', (e) => {
+            if (e.target === this.historyModal) {
+                this.closeModal();
+            }
+        });
         this.messageInput.focus();
+
+        // Disable history button initially
+        this.updateHistoryButton();
     }
 
     async handleSubmit(event) {
@@ -49,7 +63,8 @@ class ChatApp {
                 inputTokens: response.inputTokens,
                 outputTokens: response.outputTokens,
                 totalTokens: response.totalTokens,
-                responseTimeMs: response.responseTimeMs
+                responseTimeMs: response.responseTimeMs,
+                historyCompressed: response.historyCompressed
             });
         } catch (error) {
             // Hide loading indicator
@@ -72,6 +87,10 @@ class ChatApp {
         if (model) {
             requestBody.model = model;
         }
+        // Send sessionId if we have one
+        if (this.sessionId) {
+            requestBody.sessionId = this.sessionId;
+        }
 
         const response = await fetch('/api/chat', {
             method: 'POST',
@@ -86,7 +105,15 @@ class ChatApp {
             throw new Error(error.error || 'Server error');
         }
 
-        return await response.json();
+        const data = await response.json();
+
+        // Store sessionId from response
+        if (data.sessionId) {
+            this.sessionId = data.sessionId;
+            this.updateHistoryButton();
+        }
+
+        return data;
     }
 
     addMessage(text, type, model = null, stats = null) {
@@ -110,7 +137,7 @@ class ChatApp {
         if (stats && type === 'assistant') {
             const statsDiv = document.createElement('div');
             statsDiv.className = 'message-stats';
-            statsDiv.innerHTML = `
+            let statsHtml = `
                 <div class="stats-item">
                     <span class="stats-label">Вход:</span>
                     <span class="stats-value">${stats.inputTokens}</span>
@@ -128,6 +155,17 @@ class ChatApp {
                     <span class="stats-value">${(stats.responseTimeMs / 1000).toFixed(2)}с</span>
                 </div>
             `;
+
+            // Add compression indicator if history was compressed
+            if (stats.historyCompressed) {
+                statsHtml += `
+                    <div class="stats-item compressed">
+                        <span class="stats-label">🗜️ История сжата</span>
+                    </div>
+                `;
+            }
+
+            statsDiv.innerHTML = statsHtml;
             messageDiv.appendChild(statsDiv);
         }
 
@@ -187,6 +225,110 @@ class ChatApp {
             this.loadingIndicator.remove();
             this.loadingIndicator = null;
         }
+    }
+
+    updateHistoryButton() {
+        // Enable/disable history button based on sessionId
+        this.viewHistoryButton.disabled = !this.sessionId;
+        if (this.sessionId) {
+            this.viewHistoryButton.title = 'Просмотр истории диалога';
+        } else {
+            this.viewHistoryButton.title = 'Начните диалог, чтобы просмотреть историю';
+        }
+    }
+
+    async viewHistory() {
+        if (!this.sessionId) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/chat/history/${this.sessionId}`);
+
+            if (!response.ok) {
+                throw new Error('Failed to load history');
+            }
+
+            const historyData = await response.json();
+            this.displayHistory(historyData);
+            this.openModal();
+        } catch (error) {
+            console.error('Error loading history:', error);
+            alert('Не удалось загрузить историю диалога');
+        }
+    }
+
+    displayHistory(historyData) {
+        const historyInfo = document.getElementById('historyInfo');
+        const historyMessages = document.getElementById('historyMessages');
+
+        // Display session info
+        historyInfo.innerHTML = `
+            <div class="history-stats">
+                <div class="history-stat-item">
+                    <span class="label">Session ID:</span>
+                    <span class="value">${historyData.sessionId}</span>
+                </div>
+                <div class="history-stat-item">
+                    <span class="label">Всего сообщений:</span>
+                    <span class="value">${historyData.messageCount}</span>
+                </div>
+                <div class="history-stat-item">
+                    <span class="label">Пар диалогов:</span>
+                    <span class="value">${historyData.pairsCount}</span>
+                </div>
+            </div>
+        `;
+
+        // Display messages
+        historyMessages.innerHTML = '';
+
+        historyData.messages.forEach((msg, index) => {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `history-message history-message-${msg.type.toLowerCase()}`;
+
+            let typeLabel = '';
+            let icon = '';
+
+            switch(msg.type) {
+                case 'USER':
+                    typeLabel = 'Вы';
+                    icon = '👤';
+                    break;
+                case 'ASSISTANT':
+                    typeLabel = 'Assistant';
+                    icon = '🤖';
+                    break;
+                case 'SUMMARY':
+                    typeLabel = 'Summary (сжатие истории)';
+                    icon = '📝';
+                    break;
+            }
+
+            const date = new Date(msg.timestamp);
+            const timeStr = date.toLocaleTimeString('ru-RU');
+
+            msgDiv.innerHTML = `
+                <div class="history-message-header">
+                    <span class="history-message-icon">${icon}</span>
+                    <span class="history-message-type">${typeLabel}</span>
+                    <span class="history-message-time">${timeStr}</span>
+                </div>
+                <div class="history-message-content">${this.escapeHtml(msg.content)}</div>
+            `;
+
+            historyMessages.appendChild(msgDiv);
+        });
+    }
+
+    openModal() {
+        this.historyModal.style.display = 'block';
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+
+    closeModal() {
+        this.historyModal.style.display = 'none';
+        document.body.style.overflow = 'auto';
     }
 }
 

@@ -60,12 +60,17 @@ fun Application.module() {
         defaultSystemPrompt = systemPrompt
     )
 
+    // Создание сервиса для управления историей диалогов
+    val historyService = dev.skorobogatov.services.ConversationHistoryService(
+        compressionThreshold = 3  // Сжимать каждые 3 пары сообщений
+    )
+
     // Конфигурация плагинов
     configureSerialization()
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
-    configureRouting(claudeService)
+    configureRouting(claudeService, historyService)
 
     // Логирование при старте
     environment.monitor.subscribe(ApplicationStarted) {

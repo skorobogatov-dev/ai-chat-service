@@ -2,6 +2,7 @@ package dev.skorobogatov.services
 
 import dev.skorobogatov.models.ClaudeApiResponse
 import dev.skorobogatov.models.ClaudeContent
+import dev.skorobogatov.models.ClaudeMessage
 import dev.skorobogatov.models.ClaudeUsage
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*
@@ -64,7 +65,7 @@ class ClaudeServiceTest {
         )
 
         // When
-        val result = claudeService.sendMessage("Hello")
+        val result = claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Hello")))
 
         // Then
         assertEquals("Hello from Claude!", result.response)
@@ -104,7 +105,7 @@ class ClaudeServiceTest {
 
         // When & Then
         val exception = assertFails {
-            claudeService.sendMessage("Hello")
+            claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Hello")))
         }
 
         assertTrue(exception.message?.contains("Failed to get response from AI") == true)
@@ -149,7 +150,7 @@ class ClaudeServiceTest {
 
         // When & Then
         val exception = assertFails {
-            claudeService.sendMessage("Hello")
+            claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Hello")))
         }
 
         assertTrue(exception.message?.contains("No content in Claude response") == true)
@@ -184,7 +185,7 @@ class ClaudeServiceTest {
 
         // When & Then
         val exception = assertFails {
-            claudeService.sendMessage("Hello")
+            claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Hello")))
         }
 
         assertTrue(exception.message?.contains("Failed to get response from AI") == true)
@@ -232,7 +233,7 @@ class ClaudeServiceTest {
         )
 
         // When
-        claudeService.sendMessage("Test message")
+        claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Test message")))
 
         // Then
         assertNotNull(capturedRequestBody)
@@ -288,7 +289,7 @@ class ClaudeServiceTest {
 
         // When - using custom model in request
         val result = claudeService.sendMessage(
-            userMessage = "Hello",
+            messages = listOf(ClaudeMessage(role = "user", content = "Hello")),
             requestModel = "claude-3-haiku-20240307" // Override with Haiku
         )
 
@@ -347,7 +348,7 @@ class ClaudeServiceTest {
         )
 
         // When - not specifying custom model
-        val result = claudeService.sendMessage("Hello")
+        val result = claudeService.sendMessage(listOf(ClaudeMessage(role = "user", content = "Hello")))
 
         // Then - should use default model
         assertEquals("Response from default Sonnet", result.response)
@@ -423,8 +424,14 @@ class ClaudeServiceTest {
         )
 
         // When - calling with different models
-        val sonnetResult = claudeService.sendMessage("Complex task", requestModel = "claude-sonnet-4-20250514")
-        val haikuResult = claudeService.sendMessage("Simple task", requestModel = "claude-3-haiku-20240307")
+        val sonnetResult = claudeService.sendMessage(
+            listOf(ClaudeMessage(role = "user", content = "Complex task")),
+            requestModel = "claude-sonnet-4-20250514"
+        )
+        val haikuResult = claudeService.sendMessage(
+            listOf(ClaudeMessage(role = "user", content = "Simple task")),
+            requestModel = "claude-3-haiku-20240307"
+        )
 
         // Then
         assertEquals("Response from Sonnet", sonnetResult.response)
