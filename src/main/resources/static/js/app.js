@@ -9,25 +9,158 @@ class ChatApp {
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
+        this.newChatButton = document.getElementById('newChatButton');
+        this.conversationsList = document.getElementById('conversationsList');
+        this.chatTitle = document.getElementById('chatTitle');
         this.loadingIndicator = null;
         this.sessionId = null; // Current session ID
+        this.conversations = []; // List of all conversations
 
         this.init();
     }
 
-    init() {
+    async init() {
         this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
         this.viewHistoryButton.addEventListener('click', () => this.viewHistory());
         this.closeModalButton.addEventListener('click', () => this.closeModal());
+        this.newChatButton.addEventListener('click', () => this.createNewConversation());
         this.historyModal.addEventListener('click', (e) => {
             if (e.target === this.historyModal) {
                 this.closeModal();
             }
         });
-        this.messageInput.focus();
+
+        // Load conversations list
+        await this.loadConversations();
 
         // Disable history button initially
         this.updateHistoryButton();
+    }
+
+    async loadConversations() {
+        try {
+            const response = await fetch('/api/chat/conversations');
+            if (!response.ok) {
+                throw new Error('Failed to load conversations');
+            }
+
+            const data = await response.json();
+            this.conversations = data.conversations;
+            this.displayConversations();
+
+            // If there are conversations, ask user to select one
+            if (this.conversations.length === 0) {
+                this.conversationsList.innerHTML = '<div class="loading">Нет диалогов. Создайте новый!</div>';
+            }
+        } catch (error) {
+            console.error('Error loading conversations:', error);
+            this.conversationsList.innerHTML = '<div class="loading">Ошибка загрузки диалогов</div>';
+        }
+    }
+
+    displayConversations() {
+        this.conversationsList.innerHTML = '';
+
+        this.conversations.forEach(conv => {
+            const convItem = document.createElement('div');
+            convItem.className = 'conversation-item';
+            if (conv.sessionId === this.sessionId) {
+                convItem.classList.add('active');
+            }
+
+            const title = conv.title || 'Новый диалог';
+            const date = new Date(conv.lastAccessedAt);
+            const dateStr = this.formatDate(date);
+
+            convItem.innerHTML = `
+                <div class="conversation-title">${this.escapeHtml(title)}</div>
+                <div class="conversation-meta">
+                    <span>${conv.messageCount} сообщений</span>
+                    <span>${dateStr}</span>
+                </div>
+            `;
+
+            convItem.addEventListener('click', () => this.switchConversation(conv.sessionId));
+            this.conversationsList.appendChild(convItem);
+        });
+    }
+
+    async switchConversation(sessionId) {
+        if (sessionId === this.sessionId) {
+            return; // Already on this conversation
+        }
+
+        this.sessionId = sessionId;
+
+        // Clear current messages
+        this.messagesContainer.innerHTML = '';
+
+        // Load history for this conversation
+        try {
+            const response = await fetch(`/api/chat/history/${sessionId}`);
+            if (!response.ok) {
+                throw new Error('Failed to load conversation history');
+            }
+
+            const historyData = await response.json();
+
+            // Update title
+            const conv = this.conversations.find(c => c.sessionId === sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            } else {
+                this.chatTitle.textContent = 'AI Chat Assistant';
+            }
+
+            // Display all messages
+            historyData.messages.forEach(msg => {
+                const type = msg.type === 'USER' ? 'user' : 'assistant';
+                this.addMessage(msg.content, type, null, null, false);
+            });
+
+            // Update UI
+            this.displayConversations();
+            this.updateHistoryButton();
+            this.messageInput.focus();
+        } catch (error) {
+            console.error('Error switching conversation:', error);
+            alert('Не удалось загрузить диалог');
+        }
+    }
+
+    createNewConversation() {
+        // Clear session ID to start new conversation
+        this.sessionId = null;
+        this.chatTitle.textContent = 'AI Chat Assistant';
+
+        // Clear messages
+        this.messagesContainer.innerHTML = `
+            <div class="message assistant">
+                <div class="message-content">
+                    <strong>Assistant:</strong> Привет! Я готов помочь вам. Задайте любой вопрос.
+                </div>
+            </div>
+        `;
+
+        // Update UI
+        this.displayConversations();
+        this.updateHistoryButton();
+        this.messageInput.focus();
+    }
+
+    formatDate(date) {
+        const now = new Date();
+        const diff = now - date;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        if (minutes < 1) return 'только что';
+        if (minutes < 60) return `${minutes} мин назад`;
+        if (hours < 24) return `${hours} ч назад`;
+        if (days < 7) return `${days} дн назад`;
+
+        return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
     }
 
     async handleSubmit(event) {
@@ -66,6 +199,15 @@ class ChatApp {
                 responseTimeMs: response.responseTimeMs,
                 historyCompressed: response.historyCompressed
             });
+
+            // Reload conversations list to update it
+            await this.loadConversations();
+
+            // Update title if it's a new conversation
+            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            }
         } catch (error) {
             // Hide loading indicator
             this.hideLoadingIndicator();
@@ -116,7 +258,7 @@ class ChatApp {
         return data;
     }
 
-    addMessage(text, type, model = null, stats = null) {
+    addMessage(text, type, model = null, stats = null, scrollToBottom = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
@@ -172,7 +314,9 @@ class ChatApp {
         this.messagesContainer.appendChild(messageDiv);
 
         // Scroll to bottom
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        if (scrollToBottom) {
+            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }
     }
 
     getModelDisplayName(modelId) {

@@ -6,6 +6,7 @@ import java.util.UUID
 /**
  * Тип сообщения в истории диалога
  */
+@Serializable
 enum class MessageType {
     USER,       // Сообщение от пользователя
     ASSISTANT,  // Ответ ассистента
@@ -15,6 +16,7 @@ enum class MessageType {
 /**
  * Одно сообщение в истории диалога
  */
+@Serializable
 data class HistoryMessage(
     val type: MessageType,
     val content: String,
@@ -24,8 +26,10 @@ data class HistoryMessage(
 /**
  * История одного диалога
  */
+@Serializable
 data class ConversationHistory(
     val sessionId: String = UUID.randomUUID().toString(),
+    var title: String? = null,  // Название диалога (генерируется автоматически)
     val messages: MutableList<HistoryMessage> = mutableListOf(),
     val createdAt: Long = System.currentTimeMillis(),
     var lastAccessedAt: Long = System.currentTimeMillis()

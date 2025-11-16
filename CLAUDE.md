@@ -74,7 +74,15 @@ curl -X POST http://localhost:8080/api/chat \
   - Если `sessionId` указан - продолжается существующий диалог
   - `sessionId` возвращается в каждом ответе для продолжения диалога
 - **Флаг сжатия**: В ответе присутствует поле `historyCompressed` (true/false), показывающее, была ли сжата история в этом запросе
-- **In-memory хранение**: История хранится в памяти (при перезапуске сервера сессии удаляются)
+- **Персистентное хранилище**:
+  - История автоматически сохраняется в JSON файлы в директории `chat_sessions/`
+  - Каждый диалог хранится в отдельном файле: `{sessionId}.json`
+  - При перезапуске сервера все диалоги автоматически загружаются из файлов
+  - Можно продолжить беседу после перезапуска сервера
+- **Автоматическая генерация названий**:
+  - При создании нового диалога автоматически генерируется название по первому сообщению пользователя
+  - Название создается с помощью Claude AI (краткое, 5-7 слов)
+  - Названия сохраняются вместе с историей диалога
 
 ### Доступные модели Claude (от слабых к сильным)
 
@@ -88,20 +96,22 @@ curl -X POST http://localhost:8080/api/chat \
 ### Request Flow
 1. HTTP запрос → ChatRoutes (routes/)
 2. ChatRoutes → ConversationHistoryService (получить/создать сессию)
-3. ChatRoutes → ConversationHistoryService (добавить сообщение пользователя)
+3. ChatRoutes → ConversationHistoryService (добавить сообщение пользователя) → FileStorageService (автосохранение)
 4. ChatRoutes → ConversationHistoryService (проверка необходимости сжатия)
-5. Если нужно сжатие → ClaudeService.createSummary() → ConversationHistoryService.compressHistory()
+5. Если нужно сжатие → ClaudeService.createSummary() → ConversationHistoryService.compressHistory() → FileStorageService
 6. ChatRoutes → ClaudeService.sendMessage() с полной историей
 7. ClaudeService → Anthropic API (через Ktor HTTP Client)
-8. Ответ от Claude → ConversationHistoryService (добавить ответ ассистента)
-9. ChatResponse DTO (с sessionId) → JSON → клиент
+8. Ответ от Claude → ConversationHistoryService (добавить ответ ассистента) → FileStorageService (автосохранение)
+9. Если новая сессия → ClaudeService.generateConversationTitle() → ConversationHistoryService.setConversationTitle() → FileStorageService
+10. ChatResponse DTO (с sessionId) → JSON → клиент
 
 ### Key Components
 
 **Application.kt** - Entry point, инициализирует:
 - HTTP Client (CIO engine) для запросов к Anthropic
 - ClaudeService с конфигурацией из application.conf
-- ConversationHistoryService (порог сжатия = 3 пары сообщений)
+- FileStorageService (директория: `chat_sessions/`)
+- ConversationHistoryService (порог сжатия = 3 пары сообщений, автосохранение через FileStorageService)
 - Plugins (Serialization, CORS, StatusPages, Routing)
 
 **ClaudeService** - Инкапсулирует логику работы с Anthropic API:
@@ -114,13 +124,23 @@ curl -X POST http://localhost:8080/api/chat \
 - Обрабатывает ошибки и логирует usage statistics
 - Возвращает упрощенные ChatResponse объекты с информацией об использованной модели, токенах и времени ответа
 - **createSummary()** - создает краткое резюме истории для сжатия
+- **generateConversationTitle()** - генерирует название диалога на основе первого сообщения пользователя
+
+**FileStorageService** - Персистентное хранилище диалогов:
+- Сохранение/загрузка диалогов в/из JSON файлов
+- Каждый диалог в отдельном файле: `{sessionId}.json`
+- Автоматическая загрузка всех диалогов при инициализации
+- Поддержка операций: save, load, loadAll, delete, exists, getAllSessionIds
+- Thread-safe операции с файловой системой
 
 **ConversationHistoryService** - Управление историями диалогов:
-- In-memory хранилище сессий (ConcurrentHashMap для thread-safety)
+- Hybrid хранилище: in-memory (ConcurrentHashMap для thread-safety) + персистентное (через FileStorageService)
+- Автоматическая загрузка существующих диалогов из файлов при старте
 - Создание и получение сессий по sessionId
-- Добавление сообщений пользователя и ассистента
+- Добавление сообщений пользователя и ассистента с автосохранением
+- Установка названия диалога с автосохранением
 - Проверка необходимости сжатия (порог = 3 пары по умолчанию)
-- Автоматическое сжатие истории: каждые N пар → summary
+- Автоматическое сжатие истории: каждые N пар → summary с автосохранением
 - Конвертация истории в формат Claude Messages API
 - Очистка старых сессий (cleanup по таймауту)
 
@@ -138,18 +158,21 @@ curl -X POST http://localhost:8080/api/chat \
   - `model` позволяет выбрать конкретную модель Claude для запроса
   - `historyCompressed` показывает, была ли сжата история в этом запросе
 - `ConversationHistory.kt` - модели для хранения истории
-  - `ConversationHistory` - история одного диалога с sessionId и списком сообщений
-  - `HistoryMessage` - одно сообщение с типом (USER/ASSISTANT/SUMMARY) и контентом
-  - `MessageType` - enum типов сообщений
+  - `ConversationHistory` - история одного диалога с sessionId, title и списком сообщений (Serializable для JSON)
+  - `HistoryMessage` - одно сообщение с типом (USER/ASSISTANT/SUMMARY) и контентом (Serializable)
+  - `MessageType` - enum типов сообщений (Serializable)
+  - Все модели сериализуемы для сохранения в JSON файлы
 - `ClaudeModels.kt` - enum с доступными моделями Claude (Haiku, Sonnet 4)
 - `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
   - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
   - `ClaudeJsonResponse` - модель для парсинга JSON ответов от Claude (question, answer, tags)
 
 ### Design Decisions
-- **Stateful sessions** - in-memory хранилище истории диалогов с автоматическим сжатием
+- **Stateful sessions** - hybrid хранилище (in-memory + персистентное) истории диалогов с автоматическим сжатием
+- **Persistent storage** - автоматическое сохранение всех изменений в JSON файлы для сохранения между перезапусками
 - **Automatic history compression** - каждые 3 пары сообщений автоматически заменяются на AI-generated summary
-- **Single responsibility** - ClaudeService только для AI интеграции, ConversationHistoryService для управления историями
+- **AI-generated titles** - автоматическое создание понятных названий диалогов с помощью Claude AI
+- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности
 - **Configuration over code** - все настройки в application.conf
 - **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
 - **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям из разных потоков

@@ -9,12 +9,30 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Сервис для управления историями диалогов
  * Использует in-memory хранилище (ConcurrentHashMap для thread-safety)
+ * с автоматическим сохранением в файлы
  */
 class ConversationHistoryService(
-    private val compressionThreshold: Int = 3  // Сжимать каждые N пар сообщений
+    private val compressionThreshold: Int = 3,  // Сжимать каждые N пар сообщений
+    private val fileStorageService: FileStorageService? = null  // Сервис для сохранения в файлы
 ) {
     private val logger = LoggerFactory.getLogger(ConversationHistoryService::class.java)
     private val sessions = ConcurrentHashMap<String, ConversationHistory>()
+
+    init {
+        // Загрузить существующие диалоги при инициализации
+        if (fileStorageService != null) {
+            val loadedSessions = fileStorageService.loadAllConversations()
+            sessions.putAll(loadedSessions)
+            logger.info("Loaded ${loadedSessions.size} conversations from storage")
+        }
+    }
+
+    /**
+     * Сохранить сессию в файл (если fileStorageService доступен)
+     */
+    private fun saveSession(session: ConversationHistory) {
+        fileStorageService?.saveConversation(session)
+    }
 
     /**
      * Получить или создать историю диалога
@@ -22,13 +40,27 @@ class ConversationHistoryService(
     fun getOrCreateSession(sessionId: String?): ConversationHistory {
         return if (sessionId != null && sessions.containsKey(sessionId)) {
             logger.debug("Retrieved existing session: $sessionId")
-            sessions[sessionId]!!.also { it.lastAccessedAt = System.currentTimeMillis() }
+            sessions[sessionId]!!.also {
+                it.lastAccessedAt = System.currentTimeMillis()
+                saveSession(it)
+            }
         } else {
             val newSession = ConversationHistory()
             sessions[newSession.sessionId] = newSession
             logger.debug("Created new session: ${newSession.sessionId}")
+            saveSession(newSession)
             newSession
         }
+    }
+
+    /**
+     * Установить название диалога
+     */
+    fun setConversationTitle(sessionId: String, title: String) {
+        val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
+        session.title = title
+        logger.debug("Set title for session $sessionId: $title")
+        saveSession(session)
     }
 
     /**
@@ -38,6 +70,7 @@ class ConversationHistoryService(
         val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
         session.addMessage(MessageType.USER, message)
         logger.debug("Added user message to session $sessionId")
+        saveSession(session)
     }
 
     /**
@@ -47,6 +80,7 @@ class ConversationHistoryService(
         val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
         session.addMessage(MessageType.ASSISTANT, message)
         logger.debug("Added assistant message to session $sessionId")
+        saveSession(session)
     }
 
     /**
@@ -113,6 +147,7 @@ class ConversationHistoryService(
         session.messages.add(0, HistoryMessage(MessageType.SUMMARY, summary))
 
         logger.info("Compressed history for session $sessionId: removed $messagesToRemove messages, added summary")
+        saveSession(session)
     }
 
     /**
@@ -149,5 +184,14 @@ class ConversationHistoryService(
             "totalSessions" to sessions.size,
             "compressionThreshold" to compressionThreshold
         )
+    }
+
+    /**
+     * Получить список всех диалогов
+     */
+    fun getAllConversations(): List<ConversationHistory> {
+        return sessions.values
+            .sortedByDescending { it.lastAccessedAt }
+            .toList()
     }
 }

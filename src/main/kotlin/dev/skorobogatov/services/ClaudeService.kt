@@ -156,4 +156,56 @@ class ClaudeService(
             throw Exception("Failed to create summary: ${e.message}", e)
         }
     }
+
+    /**
+     * Создать название диалога на основе первого сообщения пользователя
+     */
+    suspend fun generateConversationTitle(firstMessage: String): String {
+        logger.debug("Generating conversation title for first message")
+
+        val titlePrompt = """
+            На основе следующего сообщения пользователя создай краткое название для диалога (максимум 5-7 слов).
+            Название должно отражать суть вопроса или темы.
+            Верни ТОЛЬКО название, без кавычек и дополнительных пояснений.
+
+            Сообщение пользователя:
+            $firstMessage
+        """.trimIndent()
+
+        val titleRequest = ClaudeApiRequest(
+            model = model,
+            max_tokens = 50, // Короткое название
+            messages = listOf(ClaudeMessage(role = "user", content = titlePrompt)),
+            system = "Ты помощник, который создает краткие названия для диалогов. Отвечай только названием, без дополнительного текста."
+        )
+
+        return try {
+            val response: HttpResponse = httpClient.post(apiUrl) {
+                header("x-api-key", apiKey)
+                header("anthropic-version", "2023-06-01")
+                contentType(ContentType.Application.Json)
+                setBody(titleRequest)
+            }
+
+            when (response.status) {
+                HttpStatusCode.OK -> {
+                    val apiResponse: ClaudeApiResponse = response.body()
+                    val title = apiResponse.content.firstOrNull()?.text
+                        ?.trim()
+                        ?.removeSurrounding("\"")
+                        ?: "Новый диалог"
+
+                    logger.debug("Successfully generated title: $title")
+                    title
+                }
+                else -> {
+                    logger.warn("Failed to generate title: ${response.status}, using default")
+                    "Новый диалог"
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Error generating title, using default: ${e.message}")
+            "Новый диалог"
+        }
+    }
 }

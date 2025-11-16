@@ -34,7 +34,8 @@ fun Route.chatRoutes(
 
                 // Получить или создать сессию
                 val session = historyService.getOrCreateSession(request.sessionId)
-                logger.debug("Using session: ${session.sessionId}")
+                val isNewSession = request.sessionId == null
+                logger.debug("Using session: ${session.sessionId}, isNew: $isNewSession")
 
                 // Добавить сообщение пользователя в историю
                 historyService.addUserMessage(session.sessionId, request.message)
@@ -77,6 +78,17 @@ fun Route.chatRoutes(
 
                 // Добавить ответ ассистента в историю
                 historyService.addAssistantMessage(session.sessionId, apiResponse.response)
+
+                // Сгенерировать название для нового диалога
+                if (isNewSession && session.title == null) {
+                    try {
+                        val title = claudeService.generateConversationTitle(request.message)
+                        historyService.setConversationTitle(session.sessionId, title)
+                        logger.debug("Generated title for new conversation: $title")
+                    } catch (e: Exception) {
+                        logger.warn("Failed to generate title for conversation: ${e.message}")
+                    }
+                }
 
                 // Создать ответ с sessionId
                 val response = apiResponse.copy(
@@ -131,6 +143,35 @@ fun Route.chatRoutes(
             call.respond(HttpStatusCode.OK, response)
         } catch (e: Exception) {
             logger.error("Error retrieving session history", e)
+            call.respond(
+                HttpStatusCode.InternalServerError,
+                mapOf("error" to (e.message ?: "Unknown error occurred"))
+            )
+        }
+    }
+
+    // Get all conversations endpoint
+    get("/api/chat/conversations") {
+        try {
+            val conversations = historyService.getAllConversations()
+            val conversationList = conversations.map { session ->
+                dev.skorobogatov.models.ConversationListItem(
+                    sessionId = session.sessionId,
+                    title = session.title,
+                    messageCount = session.messages.size,
+                    createdAt = session.createdAt,
+                    lastAccessedAt = session.lastAccessedAt
+                )
+            }
+
+            val response = dev.skorobogatov.models.ConversationListResponse(
+                conversations = conversationList,
+                totalCount = conversationList.size
+            )
+
+            call.respond(HttpStatusCode.OK, response)
+        } catch (e: Exception) {
+            logger.error("Error retrieving conversations list", e)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 mapOf("error" to (e.message ?: "Unknown error occurred"))

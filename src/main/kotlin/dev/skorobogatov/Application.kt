@@ -60,9 +60,15 @@ fun Application.module() {
         defaultSystemPrompt = systemPrompt
     )
 
+    // Создание сервиса для сохранения диалогов в файлы
+    val fileStorageService = dev.skorobogatov.services.FileStorageService(
+        storageDirectory = "chat_sessions"
+    )
+
     // Создание сервиса для управления историей диалогов
     val historyService = dev.skorobogatov.services.ConversationHistoryService(
-        compressionThreshold = 3  // Сжимать каждые 3 пары сообщений
+        compressionThreshold = 3,  // Сжимать каждые 3 пары сообщений
+        fileStorageService = fileStorageService
     )
 
     // Конфигурация плагинов
