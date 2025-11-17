@@ -1,11 +1,11 @@
-val ktor_version: String = "2.3.12"
-val kotlin_version: String = "1.9.24"
+val ktor_version: String = "3.0.3"
+val kotlin_version: String = "2.1.0"
 val logback_version: String = "1.4.14"
 
 plugins {
-    kotlin("jvm") version "1.9.24"
-    id("io.ktor.plugin") version "2.3.12"
-    kotlin("plugin.serialization") version "1.9.24"
+    kotlin("jvm") version "2.1.0"
+    id("io.ktor.plugin") version "3.0.3"
+    kotlin("plugin.serialization") version "2.1.0"
     application
 }
 
@@ -52,9 +52,20 @@ dependencies {
     // Logging
     implementation("ch.qos.logback:logback-classic:$logback_version")
 
+    // MCP SDK (Model Context Protocol)
+    implementation("io.modelcontextprotocol:kotlin-sdk:0.6.0")
+
     // Testing
-    testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
-    testImplementation("io.ktor:ktor-client-mock-jvm:$ktor_version")
+    testImplementation("io.ktor:ktor-server-test-host:$ktor_version")
+    testImplementation("io.ktor:ktor-client-mock:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("io.mockk:mockk:1.13.8")
+}
+
+// Task для запуска Weather MCP сервера
+tasks.register<JavaExec>("runWeatherMCP") {
+    group = "application"
+    description = "Run Weather MCP Server on port 3000"
+    mainClass.set("dev.skorobogatov.mcp.weather.WeatherMCPServerKt")
+    classpath = sourceSets["main"].runtimeClasspath
 }

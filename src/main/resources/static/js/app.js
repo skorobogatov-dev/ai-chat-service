@@ -476,7 +476,300 @@ class ChatApp {
     }
 }
 
+// MCP Manager Class
+class MCPManager {
+    constructor() {
+        this.mcpConnectForm = document.getElementById('mcpConnectForm');
+        this.mcpServerUrl = document.getElementById('mcpServerUrl');
+        this.connectButton = document.getElementById('connectButton');
+        this.disconnectButton = document.getElementById('disconnectButton');
+        this.refreshToolsButton = document.getElementById('refreshToolsButton');
+        this.connectionStatus = document.getElementById('connectionStatus');
+        this.mcpToolsList = document.getElementById('mcpToolsList');
+        this.toolCallSection = document.getElementById('toolCallSection');
+        this.toolCallResult = document.getElementById('toolCallResult');
+        this.isConnected = false;
+        this.tools = [];
+
+        this.init();
+    }
+
+    init() {
+        // Tab navigation
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => this.switchTab(button.dataset.tab));
+        });
+
+        // MCP form handlers
+        this.mcpConnectForm.addEventListener('submit', (e) => this.handleConnect(e));
+        this.disconnectButton.addEventListener('click', () => this.handleDisconnect());
+        this.refreshToolsButton.addEventListener('click', () => this.loadTools());
+
+        // Check initial connection status
+        this.checkConnectionStatus();
+    }
+
+    switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+
+        const targetTab = document.getElementById(tabName + 'Tab');
+        if (targetTab) {
+            targetTab.classList.add('active');
+        }
+    }
+
+    async handleConnect(event) {
+        event.preventDefault();
+
+        const serverUrl = this.mcpServerUrl.value.trim();
+        if (!serverUrl) {
+            alert('Введите URL сервера');
+            return;
+        }
+
+        this.connectButton.disabled = true;
+        this.connectButton.textContent = 'Подключение...';
+
+        try {
+            const response = await fetch('/api/mcp/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    serverUrl: serverUrl,
+                    transportType: 'websocket'
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.connected) {
+                this.isConnected = true;
+                this.updateConnectionUI(true, serverUrl);
+                await this.loadTools();
+            } else {
+                throw new Error(data.error || 'Не удалось подключиться');
+            }
+        } catch (error) {
+            console.error('Connection error:', error);
+            alert(`Ошибка подключения: ${error.message}`);
+            this.updateConnectionUI(false);
+        } finally {
+            this.connectButton.disabled = false;
+            this.connectButton.textContent = 'Подключиться';
+        }
+    }
+
+    async handleDisconnect() {
+        try {
+            await fetch('/api/mcp/disconnect', { method: 'POST' });
+            this.isConnected = false;
+            this.updateConnectionUI(false);
+            this.tools = [];
+            this.displayTools();
+        } catch (error) {
+            console.error('Disconnect error:', error);
+        }
+    }
+
+    async checkConnectionStatus() {
+        try {
+            const response = await fetch('/api/mcp/status');
+            const data = await response.json();
+
+            if (data.connected) {
+                this.isConnected = true;
+                this.updateConnectionUI(true, data.serverUrl);
+                await this.loadTools();
+            }
+        } catch (error) {
+            console.error('Status check error:', error);
+        }
+    }
+
+    async loadTools() {
+        if (!this.isConnected) {
+            return;
+        }
+
+        this.refreshToolsButton.disabled = true;
+        this.refreshToolsButton.textContent = '🔄 Загрузка...';
+
+        try {
+            const response = await fetch('/api/mcp/tools');
+            const data = await response.json();
+
+            if (response.ok) {
+                this.tools = data.tools || [];
+                this.displayTools();
+            } else {
+                throw new Error('Не удалось загрузить инструменты');
+            }
+        } catch (error) {
+            console.error('Load tools error:', error);
+            this.mcpToolsList.innerHTML = `<p class="mcp-placeholder" style="color: #dc3545;">Ошибка: ${error.message}</p>`;
+        } finally {
+            this.refreshToolsButton.disabled = false;
+            this.refreshToolsButton.textContent = '🔄 Обновить список';
+        }
+    }
+
+    displayTools() {
+        if (this.tools.length === 0) {
+            this.mcpToolsList.innerHTML = '<p class="mcp-placeholder">Нет доступных инструментов</p>';
+            return;
+        }
+
+        this.mcpToolsList.innerHTML = '';
+
+        this.tools.forEach(tool => {
+            const toolItem = document.createElement('div');
+            toolItem.className = 'tool-item';
+
+            const schemaHtml = tool.inputSchema
+                ? `<div class="tool-schema">${this.escapeHtml(JSON.stringify(tool.inputSchema, null, 2))}</div>`
+                : '';
+
+            toolItem.innerHTML = `
+                <div class="tool-header">
+                    <span class="tool-name">🔧 ${this.escapeHtml(tool.name)}</span>
+                </div>
+                <div class="tool-description">${this.escapeHtml(tool.description || 'Нет описания')}</div>
+                ${schemaHtml}
+                <div class="tool-actions">
+                    <button class="btn-small call-tool-btn" data-tool-name="${this.escapeHtml(tool.name)}">
+                        ▶️ Вызвать
+                    </button>
+                </div>
+            `;
+
+            const callButton = toolItem.querySelector('.call-tool-btn');
+            callButton.addEventListener('click', () => this.showToolCallForm(tool));
+
+            this.mcpToolsList.appendChild(toolItem);
+        });
+    }
+
+    showToolCallForm(tool) {
+        const form = document.createElement('div');
+        form.className = 'tool-call-modal';
+        form.innerHTML = `
+            <h4>Вызов инструмента: ${this.escapeHtml(tool.name)}</h4>
+            <form class="tool-call-form">
+                <div class="argument-input">
+                    <input type="text" name="argKey" placeholder="Ключ (например: text)" />
+                    <input type="text" name="argValue" placeholder="Значение" />
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Выполнить</button>
+                    <button type="button" class="btn-secondary cancel-btn">Отмена</button>
+                </div>
+            </form>
+        `;
+
+        // Find tool item
+        const toolItems = Array.from(document.querySelectorAll('.tool-item'));
+        const toolItem = toolItems.find(item =>
+            item.querySelector('.tool-name').textContent.includes(tool.name)
+        );
+
+        if (!toolItem) return;
+
+        // Remove any existing forms
+        const existingForm = toolItem.querySelector('.tool-call-modal');
+        if (existingForm) {
+            existingForm.remove();
+            return;
+        }
+
+        toolItem.appendChild(form);
+
+        // Handle form submission
+        const formElement = form.querySelector('.tool-call-form');
+        formElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const argKey = formElement.querySelector('[name="argKey"]').value.trim();
+            const argValue = formElement.querySelector('[name="argValue"]').value.trim();
+
+            const toolArgs = {};
+            if (argKey && argValue) {
+                toolArgs[argKey] = argValue;
+            }
+
+            await this.callTool(tool.name, toolArgs);
+            form.remove();
+        });
+
+        // Handle cancel
+        form.querySelector('.cancel-btn').addEventListener('click', () => {
+            form.remove();
+        });
+    }
+
+    async callTool(toolName, toolArgs) {
+        try {
+            const response = await fetch('/api/mcp/tools/call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ toolName, arguments: toolArgs })
+            });
+
+            const data = await response.json();
+
+            // Show result
+            this.toolCallSection.style.display = 'block';
+            this.toolCallResult.className = 'tool-call-result ' + (data.success ? 'result-success' : 'result-error');
+            this.toolCallResult.innerHTML = `
+                <div class="result-header">
+                    ${data.success ? '✅ Успешно' : '❌ Ошибка'}: ${this.escapeHtml(toolName)}
+                </div>
+                <div class="result-content">${this.escapeHtml(data.result || data.error || 'Нет результата')}</div>
+            `;
+
+            // Scroll to result
+            this.toolCallSection.scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            console.error('Call tool error:', error);
+            alert(`Ошибка вызова инструмента: ${error.message}`);
+        }
+    }
+
+    updateConnectionUI(connected, serverUrl = null) {
+        this.isConnected = connected;
+
+        if (connected) {
+            this.connectionStatus.textContent = '🟢 Подключено' + (serverUrl ? `: ${serverUrl}` : '');
+            this.connectionStatus.className = 'connection-status connected';
+            this.disconnectButton.disabled = false;
+            this.refreshToolsButton.disabled = false;
+            if (serverUrl) {
+                this.mcpServerUrl.value = serverUrl;
+            }
+        } else {
+            this.connectionStatus.textContent = '⚫ Не подключено';
+            this.connectionStatus.className = 'connection-status disconnected';
+            this.disconnectButton.disabled = true;
+            this.refreshToolsButton.disabled = true;
+            this.mcpToolsList.innerHTML = '<p class="mcp-placeholder">Подключитесь к MCP серверу для просмотра инструментов</p>';
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new ChatApp();
+    new MCPManager();
 });

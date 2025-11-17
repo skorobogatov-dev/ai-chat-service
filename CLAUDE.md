@@ -91,6 +91,58 @@ curl -X POST http://localhost:8080/api/chat \
 
 Модель по умолчанию настраивается в `application.conf`. Если не указано иное, используется модель из конфигурации.
 
+### Model Context Protocol (MCP) API
+
+Сервис поддерживает интеграцию с MCP серверами для доступа к инструментам через Model Context Protocol.
+
+#### Подключение к MCP серверу
+```bash
+curl -X POST http://localhost:8080/api/mcp/connect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serverUrl": "ws://localhost:3000/mcp",
+    "transportType": "websocket"
+  }'
+# Ответ: {"connected": true, "serverUrl": "ws://localhost:3000/mcp"}
+```
+
+#### Получение списка доступных инструментов
+```bash
+curl http://localhost:8080/api/mcp/tools
+# Ответ: {
+#   "tools": [
+#     {"name": "tool1", "description": "...", "inputSchema": {...}},
+#     {"name": "tool2", "description": "...", "inputSchema": {...}}
+#   ],
+#   "totalCount": 2,
+#   "serverUrl": "ws://localhost:3000/mcp",
+#   "connected": true
+# }
+```
+
+#### Вызов инструмента
+```bash
+curl -X POST http://localhost:8080/api/mcp/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolName": "echo",
+    "arguments": {"text": "Hello MCP!"}
+  }'
+# Ответ: {"result": "...", "toolName": "echo", "success": true}
+```
+
+#### Проверка статуса подключения
+```bash
+curl http://localhost:8080/api/mcp/status
+# Ответ: {"connected": true, "serverUrl": "ws://localhost:3000/mcp"}
+```
+
+#### Отключение от MCP сервера
+```bash
+curl -X POST http://localhost:8080/api/mcp/disconnect
+# Ответ: {"message": "Disconnected from MCP server"}
+```
+
 ## Architecture Overview
 
 ### Request Flow
@@ -112,6 +164,7 @@ curl -X POST http://localhost:8080/api/chat \
 - ClaudeService с конфигурацией из application.conf
 - FileStorageService (директория: `chat_sessions/`)
 - ConversationHistoryService (порог сжатия = 3 пары сообщений, автосохранение через FileStorageService)
+- MCPService для работы с Model Context Protocol
 - Plugins (Serialization, CORS, StatusPages, Routing)
 
 **ClaudeService** - Инкапсулирует логику работы с Anthropic API:
@@ -144,11 +197,19 @@ curl -X POST http://localhost:8080/api/chat \
 - Конвертация истории в формат Claude Messages API
 - Очистка старых сессий (cleanup по таймауту)
 
+**MCPService** - Управление подключением к MCP серверам:
+- Создание и управление MCP клиентами (Model Context Protocol Kotlin SDK)
+- Подключение к MCP серверам через WebSocket транспорт
+- Получение списка доступных инструментов (listTools)
+- Вызов инструментов с передачей параметров (callTool)
+- Thread-safe управление подключением через Mutex
+- Автоматическая конвертация схем инструментов для сериализации
+
 **Plugins** - Модульная конфигурация Ktor:
 - Serialization: kotlinx.serialization для JSON
 - HTTP: CORS для кросс-доменных запросов
 - StatusPages: глобальная обработка исключений
-- Routing: регистрация всех routes
+- Routing: регистрация всех routes (ChatRoutes, MCPRoutes)
 
 ### Data Models
 - `ChatRequest/ChatResponse` - публичные API DTOs
@@ -166,6 +227,12 @@ curl -X POST http://localhost:8080/api/chat \
 - `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
   - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
   - `ClaudeJsonResponse` - модель для парсинга JSON ответов от Claude (question, answer, tags)
+- `MCPModels.kt` - модели для MCP интеграции
+  - `MCPConnectionRequest` - запрос для подключения к MCP серверу (serverUrl, transportType)
+  - `MCPToolInfo` - информация об инструменте (name, description, inputSchema)
+  - `MCPToolsResponse` - ответ со списком инструментов
+  - `MCPCallToolRequest/Response` - запрос/ответ для вызова инструмента
+  - `MCPConnectionStatus` - статус подключения к MCP серверу
 
 ### Design Decisions
 - **Stateful sessions** - hybrid хранилище (in-memory + персистентное) истории диалогов с автоматическим сжатием
@@ -178,6 +245,9 @@ curl -X POST http://localhost:8080/api/chat \
 - **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям из разных потоков
 
 ## External Dependencies
-- Anthropic Claude API (requires API key)
-- Ktor Server (Netty engine)
-- Ktor Client (CIO engine)
+- **Anthropic Claude API** (requires API key)
+- **Ktor 3.0.3** - Server (Netty engine), Client (CIO engine), WebSockets
+- **Kotlin 2.1.0** - Language version (required for MCP SDK)
+- **MCP Kotlin SDK 0.6.0** - Model Context Protocol официальная реализация от Anthropic & JetBrains
+- **kotlinx.serialization** - JSON сериализация для всех DTO
+- **Logback** - Логирование

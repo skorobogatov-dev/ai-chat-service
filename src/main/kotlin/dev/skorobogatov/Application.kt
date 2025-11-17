@@ -71,12 +71,15 @@ fun Application.module() {
         fileStorageService = fileStorageService
     )
 
+    // Создание сервиса для работы с MCP (Model Context Protocol)
+    val mcpService = dev.skorobogatov.services.MCPService()
+
     // Конфигурация плагинов
     configureSerialization()
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
-    configureRouting(claudeService, historyService)
+    configureRouting(claudeService, historyService, mcpService)
 
     // Логирование при старте
     environment.monitor.subscribe(ApplicationStarted) {
