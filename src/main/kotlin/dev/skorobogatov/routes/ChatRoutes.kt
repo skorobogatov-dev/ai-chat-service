@@ -1,21 +1,34 @@
 package dev.skorobogatov.routes
 
-import dev.skorobogatov.models.ChatRequest
-import dev.skorobogatov.models.ClaudeMessage
+import dev.skorobogatov.models.*
 import dev.skorobogatov.services.ClaudeService
 import dev.skorobogatov.services.ConversationHistoryService
+import dev.skorobogatov.services.MCPService
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("ChatRoutes")
 
+/**
+ * Конвертирует MCP схему в JsonObject для Claude API
+ */
+private fun convertMcpSchemaToJson(inputSchema: JsonObject?): JsonObject {
+    // Схема уже приходит в правильном формате из MCPService
+    return inputSchema ?: buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {})
+    }
+}
+
 fun Route.chatRoutes(
     claudeService: ClaudeService,
-    historyService: ConversationHistoryService
+    historyService: ConversationHistoryService,
+    mcpService: MCPService
 ) {
     route("/api/chat") {
         post {
@@ -69,12 +82,55 @@ fun Route.chatRoutes(
                 // Получить все сообщения для отправки в Claude API
                 val allMessages = session.toClaudeMessages()
 
-                // Отправить запрос в Claude API с историей
-                val apiResponse = claudeService.sendMessage(
-                    allMessages,
-                    request.systemPrompt,
-                    request.model
-                )
+                // Проверить, подключен ли MCP сервер и получить инструменты
+                val connectionStatus = mcpService.getConnectionStatus()
+                val apiResponse = if (connectionStatus.connected) {
+                    logger.info("MCP server connected, fetching tools")
+                    val mcpToolsResponse = mcpService.listTools()
+
+                    if (mcpToolsResponse.tools.isNotEmpty()) {
+                        logger.info("Found ${mcpToolsResponse.tools.size} MCP tools, using tool-enabled mode")
+
+                        // Конвертировать MCP инструменты в формат Claude
+                        val claudeTools = mcpToolsResponse.tools.map { mcpTool ->
+                            ClaudeTool(
+                                name = mcpTool.name,
+                                description = mcpTool.description ?: "No description",
+                                input_schema = convertMcpSchemaToJson(mcpTool.inputSchema)
+                            )
+                        }
+
+                        // Отправить запрос с поддержкой инструментов
+                        claudeService.sendMessageWithTools(
+                            messages = allMessages,
+                            tools = claudeTools,
+                            systemPrompt = request.systemPrompt,
+                            requestModel = request.model,
+                            onToolCall = { toolName, input ->
+                                logger.info("Executing MCP tool: $toolName")
+                                // Конвертировать JsonObject в Map<String, String>
+                                val arguments = input.entries.associate { (key, value) ->
+                                    key to when (value) {
+                                        is JsonPrimitive -> value.content
+                                        else -> value.toString()
+                                    }
+                                }
+                                val result = mcpService.callTool(toolName, arguments)
+                                if (result.success) {
+                                    result.result
+                                } else {
+                                    throw Exception(result.error ?: "Unknown error calling tool")
+                                }
+                            }
+                        )
+                    } else {
+                        logger.debug("MCP server connected but no tools available, using standard mode")
+                        claudeService.sendMessage(allMessages, request.systemPrompt, request.model)
+                    }
+                } else {
+                    logger.debug("MCP server not connected, using standard mode")
+                    claudeService.sendMessage(allMessages, request.systemPrompt, request.model)
+                }
 
                 // Добавить ответ ассистента в историю
                 historyService.addAssistantMessage(session.sessionId, apiResponse.response)

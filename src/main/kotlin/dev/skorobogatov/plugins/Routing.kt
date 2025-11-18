@@ -15,7 +15,7 @@ fun Application.configureRouting(
     mcpService: MCPService
 ) {
     routing {
-        chatRoutes(claudeService, historyService)
+        chatRoutes(claudeService, historyService, mcpService)
         mcpRoutes(mcpService)
     }
 }

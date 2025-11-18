@@ -9,6 +9,7 @@ import io.ktor.client.plugins.logging.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.netty.*
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 fun main(args: Array<String>) {
@@ -80,6 +81,33 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureRouting(claudeService, historyService, mcpService)
+
+    // Автоматическое подключение к MCP серверу, если URL задан
+    val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
+    if (!mcpServerUrl.isNullOrBlank()) {
+        val transportType = environment.config.propertyOrNull("mcp.transportType")?.getString() ?: "websocket"
+        environment.log.info("MCP server URL configured: $mcpServerUrl (transport: $transportType)")
+
+        // Подключение будет выполнено асинхронно при старте
+        launch {
+            try {
+                environment.log.info("Connecting to MCP server: $mcpServerUrl")
+                val status = mcpService.connect(mcpServerUrl, transportType)
+                if (status.connected) {
+                    environment.log.info("Successfully connected to MCP server")
+                    // Получить список доступных инструментов
+                    val tools = mcpService.listTools()
+                    environment.log.info("Available MCP tools: ${tools.tools.joinToString(", ") { it.name }}")
+                } else {
+                    environment.log.warn("Failed to connect to MCP server: ${status.error}")
+                }
+            } catch (e: Exception) {
+                environment.log.error("Error connecting to MCP server: ${e.message}", e)
+            }
+        }
+    } else {
+        environment.log.info("MCP server URL not configured. MCP integration disabled. Set MCP_SERVER_URL environment variable to enable.")
+    }
 
     // Логирование при старте
     environment.monitor.subscribe(ApplicationStarted) {

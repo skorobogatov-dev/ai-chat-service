@@ -2,12 +2,24 @@
 
 REST API сервис на Ktor для взаимодействия с Claude AI от Anthropic.
 
+## ✨ Новое: MCP Integration
+
+**Теперь с полной поддержкой Model Context Protocol (MCP)!**
+
+🌤️ **Weather MCP Server** - Claude автоматически получает данные о погоде через MCP протокол
+
+📚 **Быстрый старт:**
+- **[QUICKSTART.md](./QUICKSTART.md)** - запуск за 3 шага
+- **[MCP_INTEGRATION_GUIDE.md](./MCP_INTEGRATION_GUIDE.md)** - полный гайд по MCP
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - архитектура и диаграммы
+
 ## Технологии
 
-- **Kotlin** 1.9.24
-- **Ktor** 2.3.12 (Server + Client)
+- **Kotlin** 2.1.0
+- **Ktor** 3.0.3 (Server + Client + WebSockets)
 - **Kotlinx Serialization** для работы с JSON
-- **Anthropic Claude API** (claude-3-5-sonnet-20241022)
+- **Anthropic Claude API** (claude-sonnet-4-20250514)
+- **Model Context Protocol (MCP)** - интеграция с инструментами
 
 ## Требования
 
@@ -256,13 +268,67 @@ export CLAUDE_SYSTEM_PROMPT="Отвечай всегда кратко, макс�
 ./gradlew ktlintFormat
 ```
 
+## 🌤️ MCP Integration - Weather Tools
+
+### Быстрый запуск MCP
+
+**Терминал 1 - Weather MCP Server:**
+```bash
+./run-weather-server.sh
+```
+
+**Терминал 2 - Основное приложение:**
+```bash
+export ANTHROPIC_API_KEY="your-key"
+./run-main-with-mcp.sh
+```
+
+**Терминал 3 - Тест:**
+```bash
+./test-weather-integration.sh
+
+# Или вручную:
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Какая погода в Москве?"}'
+```
+
+### Как это работает
+
+```
+Вы: "Какая погода в Москве?"
+  ↓
+REST API → Claude API (с tools от Weather MCP Server)
+  ↓
+Claude: "Нужен инструмент get_weather для Moscow"
+  ↓
+REST API → Weather MCP Server → Open-Meteo API
+  ↓
+Данные о погоде → Claude → Красивый ответ
+  ↓
+Вы: "В Москве +5°C, облачно..."
+```
+
+### Доступные MCP инструменты
+
+- `get_weather(city)` - текущая погода
+- `get_forecast(city, days)` - прогноз на N дней
+
+### Документация MCP
+
+- **[QUICKSTART.md](./QUICKSTART.md)** - запуск за 3 шага
+- **[MCP_INTEGRATION_GUIDE.md](./MCP_INTEGRATION_GUIDE.md)** - полный гайд
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - архитектура системы
+
 ## Возможные улучшения
 
+- [x] Поддержка контекста диалога (сделано с history compression)
+- [x] Сохранение истории сообщений (персистентное хранилище в JSON)
+- [x] Model Context Protocol (MCP) интеграция
 - [ ] Добавить Swagger/OpenAPI документацию
 - [ ] Реализовать streaming ответов (Server-Sent Events)
 - [ ] Добавить rate limiting
-- [ ] Сохранение истории сообщений в БД
-- [ ] Поддержка контекста диалога
+- [ ] Сохранение истории в БД (сейчас JSON файлы)
 - [ ] Аутентификация пользователей
 - [ ] Метрики и мониторинг
 

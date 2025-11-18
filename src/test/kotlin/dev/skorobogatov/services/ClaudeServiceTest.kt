@@ -1,7 +1,7 @@
 package dev.skorobogatov.services
 
 import dev.skorobogatov.models.ClaudeApiResponse
-import dev.skorobogatov.models.ClaudeContent
+import dev.skorobogatov.models.ClaudeContentResponse
 import dev.skorobogatov.models.ClaudeMessage
 import dev.skorobogatov.models.ClaudeUsage
 import io.ktor.client.*
@@ -32,7 +32,7 @@ class ClaudeServiceTest {
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Hello from Claude!")),
+            content = listOf(ClaudeContentResponse(type = "text", text = "Hello from Claude!")),
             model = "claude-sonnet-4-20250514",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -202,7 +202,7 @@ class ClaudeServiceTest {
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Response")),
+            content = listOf(ClaudeContentResponse(type = "text", text = "Response")),
             model = "claude-sonnet-4-20250514",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -250,7 +250,7 @@ class ClaudeServiceTest {
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Response from Haiku")),
+            content = listOf(ClaudeContentResponse(type = "text", text = "Response from Haiku")),
             model = "claude-3-haiku-20240307",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -312,7 +312,7 @@ class ClaudeServiceTest {
             id = "msg_123",
             type = "message",
             role = "assistant",
-            content = listOf(ClaudeContent(type = "text", text = "Response from default Sonnet")),
+            content = listOf(ClaudeContentResponse(type = "text", text = "Response from default Sonnet")),
             model = "claude-sonnet-4-20250514",
             stop_reason = "end_turn",
             usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -377,7 +377,7 @@ class ClaudeServiceTest {
                         id = "msg_sonnet",
                         type = "message",
                         role = "assistant",
-                        content = listOf(ClaudeContent(type = "text", text = "Response from Sonnet")),
+                        content = listOf(ClaudeContentResponse(type = "text", text = "Response from Sonnet")),
                         model = "claude-sonnet-4-20250514",
                         stop_reason = "end_turn",
                         usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)
@@ -394,7 +394,7 @@ class ClaudeServiceTest {
                         id = "msg_haiku",
                         type = "message",
                         role = "assistant",
-                        content = listOf(ClaudeContent(type = "text", text = "Response from Haiku")),
+                        content = listOf(ClaudeContentResponse(type = "text", text = "Response from Haiku")),
                         model = "claude-3-haiku-20240307",
                         stop_reason = "end_turn",
                         usage = ClaudeUsage(input_tokens = 10, output_tokens = 20)

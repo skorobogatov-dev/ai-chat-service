@@ -1,6 +1,7 @@
 package dev.skorobogatov.models
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Запрос для подключения к MCP серверу
@@ -18,7 +19,7 @@ data class MCPConnectionRequest(
 data class MCPToolInfo(
     val name: String,
     val description: String?,
-    val inputSchema: Map<String, String>? = null
+    val inputSchema: JsonObject? = null
 )
 
 /**

@@ -4,11 +4,13 @@ import dev.skorobogatov.models.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.WebSocketClientTransport
 import io.modelcontextprotocol.kotlin.sdk.Implementation
+import io.modelcontextprotocol.kotlin.sdk.Tool
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.websocket.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 
 /**
@@ -202,14 +204,43 @@ class MCPService {
     }
 
     /**
-     * Вспомогательная функция для конвертации схемы в Map
+     * Вспомогательная функция для конвертации схемы MCP в JsonObject для Claude API
      */
-    private fun convertSchemaToMap(schema: Any): Map<String, String> {
-        // Простая конвертация схемы в Map для сериализации
-        // В будущем можно расширить для более сложных структур
+    private fun convertSchemaToMap(schema: Any): JsonObject {
         return when (schema) {
-            is Map<*, *> -> schema.filterKeys { it is String }.mapKeys { it.key as String }.mapValues { (it.value ?: "").toString() }
-            else -> mapOf("raw" to schema.toString())
+            is Tool.Input -> {
+                // Извлекаем properties и required из Tool.Input
+                buildJsonObject {
+                    put("type", "object")
+                    put("properties", schema.properties)
+                    schema.required?.let {
+                        put("required", JsonArray(it.map { JsonPrimitive(it) }))
+                    }
+                }
+            }
+            is JsonObject -> schema
+            is Map<*, *> -> {
+                // Пытаемся конвертировать Map в JsonObject
+                buildJsonObject {
+                    schema.forEach { (key, value) ->
+                        if (key is String) {
+                            when (value) {
+                                is String -> put(key, value)
+                                is Number -> put(key, value)
+                                is Boolean -> put(key, value)
+                                else -> put(key, value.toString())
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                // Fallback для неизвестных типов
+                logger.warn("Unknown schema type: ${schema::class.simpleName}, using toString()")
+                buildJsonObject {
+                    put("raw", schema.toString())
+                }
+            }
         }
     }
 }
