@@ -27,6 +27,22 @@ class ClaudeService(
     }
 
     /**
+     * Очищает ответ от markdown code fences (```json, ```, и т.д.)
+     */
+    private fun cleanMarkdownCodeFences(text: String): String {
+        var cleaned = text.trim()
+
+        // Убираем ```json ... ``` или ```text ... ``` или просто ``` ... ```
+        val codeBlockRegex = Regex("^```(?:json|text)?\\s*\\n?([\\s\\S]*?)\\n?```$", RegexOption.MULTILINE)
+        val match = codeBlockRegex.find(cleaned)
+        if (match != null) {
+            cleaned = match.groupValues[1].trim()
+        }
+
+        return cleaned
+    }
+
+    /**
      * Отправить сообщение с учетом истории диалога
      */
     suspend fun sendMessage(
@@ -90,6 +106,9 @@ class ClaudeService(
                         messageText
                     }
 
+                    // Очистить ответ от markdown code fences
+                    val cleanedAnswer = cleanMarkdownCodeFences(extractedAnswer)
+
                     val usage = apiResponse.usage ?: ClaudeUsage(input_tokens = 0, output_tokens = 0)
                     val totalTokens = usage.input_tokens + usage.output_tokens
 
@@ -97,7 +116,7 @@ class ClaudeService(
                     logger.info("Usage: input=${usage.input_tokens}, output=${usage.output_tokens}, total=$totalTokens tokens, time=${responseTime}ms")
 
                     ChatResponse(
-                        response = extractedAnswer,
+                        response = cleanedAnswer,
                         model = apiResponse.model,
                         inputTokens = usage.input_tokens,
                         outputTokens = usage.output_tokens,
@@ -276,8 +295,11 @@ class ClaudeService(
 
         logger.info("Usage: input=$totalInputTokens, output=$totalOutputTokens, total=$totalTokens tokens, time=${responseTime}ms, iterations=$iterations")
 
+        // Очистить финальный ответ от markdown code fences
+        val cleanedFinalResponse = cleanMarkdownCodeFences(finalResponse ?: "")
+
         return ChatResponse(
-            response = finalResponse ?: "",
+            response = cleanedFinalResponse,
             model = effectiveModel,
             inputTokens = totalInputTokens,
             outputTokens = totalOutputTokens,
