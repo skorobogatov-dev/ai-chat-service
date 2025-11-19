@@ -192,6 +192,145 @@ curl -X POST http://localhost:8080/api/chat \
 
 Модель по умолчанию настраивается в `application.conf`. Если не указано иное, используется модель из конфигурации.
 
+### Scheduled Tasks API
+
+Сервис поддерживает создание задач по расписанию для автоматического выполнения запросов к Claude AI.
+
+#### Создание задачи
+```bash
+# Одноразовая задача (выполнится один раз в указанное время)
+curl -X POST http://localhost:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Weather Check",
+    "description": "Daily weather forecast",
+    "question": "Какая завтра погода в Москве и что можно надеть?",
+    "sessionId": null,
+    "schedule": {
+      "type": "ONCE",
+      "startTime": "2025-11-20T09:00:00"
+    }
+  }'
+
+# Ежедневная задача (выполняется каждый день в указанное время)
+curl -X POST http://localhost:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Daily Weather",
+    "question": "Какая сегодня погода?",
+    "schedule": {
+      "type": "DAILY",
+      "hour": 9,
+      "minute": 0
+    }
+  }'
+
+# Еженедельная задача (выполняется в указанный день недели и время)
+curl -X POST http://localhost:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Weekly Report",
+    "question": "Составь отчет за неделю",
+    "schedule": {
+      "type": "WEEKLY",
+      "dayOfWeek": 1,
+      "hour": 10,
+      "minute": 0
+    }
+  }'
+
+# Ответ: {
+#   "id": "uuid",
+#   "name": "Weather Check",
+#   "description": "Daily weather forecast",
+#   "question": "Какая завтра погода в Москве и что можно надеть?",
+#   "sessionId": null,
+#   "schedule": {...},
+#   "enabled": true,
+#   "createdAt": "2025-11-19T19:37:02.999845",
+#   "nextExecutionAt": "2025-11-20T09:00:00"
+# }
+```
+
+**Параметры создания задачи:**
+- `name` (обязательно) - название задачи
+- `description` (опционально) - описание задачи
+- `question` (обязательно) - вопрос для Claude AI
+- `sessionId` (опционально) - ID диалога для записи результатов (если null - создастся новый диалог)
+- `schedule` (обязательно) - расписание выполнения:
+  - `type`: `"ONCE"`, `"DAILY"`, или `"WEEKLY"`
+  - Для `ONCE`: `startTime` в формате ISO-8601 (`"YYYY-MM-DDTHH:MM:SS"`)
+  - Для `DAILY`: `hour` (0-23) и `minute` (0-59)
+  - Для `WEEKLY`: `dayOfWeek` (1=Понедельник...7=Воскресенье), `hour`, `minute`
+
+#### Получение списка задач
+```bash
+curl http://localhost:8080/api/tasks
+# Ответ: {
+#   "tasks": [...],
+#   "totalCount": 5
+# }
+```
+
+#### Получение конкретной задачи
+```bash
+curl http://localhost:8080/api/tasks/{taskId}
+```
+
+#### Обновление задачи
+```bash
+curl -X PUT http://localhost:8080/api/tasks/{taskId} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": false
+  }'
+```
+
+**Параметры обновления (все опциональны):**
+- `name` - новое название
+- `description` - новое описание
+- `question` - новый вопрос
+- `sessionId` - новый ID диалога
+- `schedule` - новое расписание
+- `enabled` - включить/выключить задачу (true/false)
+
+#### Удаление задачи
+```bash
+curl -X DELETE http://localhost:8080/api/tasks/{taskId}
+```
+
+#### Просмотр истории выполнений
+```bash
+curl http://localhost:8080/api/tasks/{taskId}/executions
+# Ответ: {
+#   "executions": [
+#     {
+#       "id": "execution-uuid",
+#       "taskId": "task-uuid",
+#       "taskName": "Weather Check",
+#       "question": "Какая завтра погода?",
+#       "response": "...",
+#       "sessionId": "session-uuid",
+#       "success": true,
+#       "executedAt": "2025-11-19T19:38:05.764242",
+#       "executionTimeMs": 5761
+#     }
+#   ],
+#   "totalCount": 10,
+#   "taskId": "task-uuid"
+# }
+```
+
+**Как работают задачи:**
+1. Задача создается и планируется на указанное время
+2. В заданное время сервер автоматически:
+   - Создает новую сессию или использует указанную
+   - Отправляет вопрос в Claude AI
+   - Сохраняет ответ в историю диалога
+   - Записывает результат выполнения
+3. Для периодических задач (DAILY, WEEKLY) автоматически планируется следующее выполнение
+4. Все задачи и выполнения сохраняются в директорию `scheduled_tasks/`
+
 ### Model Context Protocol (MCP) API
 
 Сервис поддерживает интеграцию с MCP серверами для доступа к инструментам через Model Context Protocol.
@@ -265,6 +404,8 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - ClaudeService с конфигурацией из application.conf
 - FileStorageService (директория: `chat_sessions/`)
 - ConversationHistoryService (порог сжатия = 3 пары сообщений, автосохранение через FileStorageService)
+- TaskStorageService (директория: `scheduled_tasks/`)
+- SchedulerService (управление и выполнение запланированных задач)
 - MCPService для работы с Model Context Protocol
 - Plugins (Serialization, CORS, StatusPages, Routing)
 
@@ -298,6 +439,30 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - Конвертация истории в формат Claude Messages API
 - Очистка старых сессий (cleanup по таймауту)
 
+**TaskStorageService** - Персистентное хранилище задач и выполнений:
+- Сохранение/загрузка задач и выполнений в/из JSON файлов
+- Хранение в директории `scheduled_tasks/`: tasks/ и executions/
+- Каждая задача в отдельном файле: `{taskId}.json`
+- Каждое выполнение в отдельном файле: `{taskId}/{executionId}.json`
+- Автоматическая загрузка всех задач при инициализации
+- Поддержка операций: saveTask, loadTask, loadAllTasks, deleteTask, saveExecution, loadExecutions, deleteExecutions
+- Thread-safe операции с файловой системой
+
+**SchedulerService** - Планировщик и выполнение задач:
+- In-memory управление задачами через ConcurrentHashMap (thread-safe)
+- Автоматическая загрузка задач из TaskStorageService при старте
+- Планирование задач с использованием Kotlin coroutines (CoroutineScope + Dispatchers.Default)
+- Вычисление следующего времени выполнения для ONCE/DAILY/WEEKLY задач
+- Автоматическое выполнение задач в заданное время:
+  - Создание/использование сессии диалога (через ConversationHistoryService)
+  - Отправка вопроса в Claude AI (через ClaudeService)
+  - Сохранение результата в историю диалога
+  - Запись информации о выполнении (через TaskStorageService)
+- Автоматическое перепланирование периодических задач (DAILY, WEEKLY)
+- Обработка ошибок выполнения с сохранением информации об ошибках
+- CRUD операции: createTask, updateTask, deleteTask, getTask, getAllTasks, getExecutions
+- Graceful shutdown через отмену coroutine scope
+
 **MCPService** - Управление подключением к MCP серверам:
 - Создание и управление MCP клиентами (Model Context Protocol Kotlin SDK)
 - Подключение к MCP серверам через WebSocket транспорт
@@ -310,7 +475,7 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - Serialization: kotlinx.serialization для JSON
 - HTTP: CORS для кросс-доменных запросов
 - StatusPages: глобальная обработка исключений
-- Routing: регистрация всех routes (ChatRoutes, MCPRoutes)
+- Routing: регистрация всех routes (ChatRoutes, MCPRoutes, TaskRoutes)
 
 ### Data Models
 - `ChatRequest/ChatResponse` - публичные API DTOs
@@ -334,16 +499,30 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
   - `MCPToolsResponse` - ответ со списком инструментов
   - `MCPCallToolRequest/Response` - запрос/ответ для вызова инструмента
   - `MCPConnectionStatus` - статус подключения к MCP серверу
+- `ScheduledTask.kt` - модели для планировщика задач
+  - `ScheduledTask` - запланированная задача с id, name, question, schedule, enabled, createdAt, nextExecutionAt (Serializable)
+  - `TaskSchedule` - расписание выполнения с type (ONCE/DAILY/WEEKLY) и параметрами времени (Serializable)
+  - `ScheduleType` - enum типов расписания (ONCE, DAILY, WEEKLY)
+  - `TaskExecution` - результат выполнения задачи с question, response, success, errorMessage, executedAt (Serializable)
+  - `LocalDateTimeSerializer` - кастомный сериализатор для LocalDateTime в JSON (ISO-8601 формат)
+- `TaskModels.kt` - DTOs для API задач
+  - `CreateTaskRequest` - запрос на создание задачи (name, question, sessionId, schedule)
+  - `UpdateTaskRequest` - запрос на обновление задачи (все поля опциональны)
+  - `TaskListResponse` - ответ со списком задач
+  - `TaskExecutionListResponse` - ответ со списком выполнений задачи
 
 ### Design Decisions
 - **Stateful sessions** - hybrid хранилище (in-memory + персистентное) истории диалогов с автоматическим сжатием
 - **Persistent storage** - автоматическое сохранение всех изменений в JSON файлы для сохранения между перезапусками
 - **Automatic history compression** - каждые 3 пары сообщений автоматически заменяются на AI-generated summary
 - **AI-generated titles** - автоматическое создание понятных названий диалогов с помощью Claude AI
-- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности
+- **Coroutine-based scheduler** - использование Kotlin coroutines для асинхронного выполнения запланированных задач без блокировки потоков
+- **Task persistence** - все задачи и выполнения сохраняются в JSON для восстановления после перезапуска
+- **Flexible scheduling** - поддержка одноразовых (ONCE), ежедневных (DAILY) и еженедельных (WEEKLY) задач
+- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности диалогов, TaskStorageService для персистентности задач, SchedulerService для планирования
 - **Configuration over code** - все настройки в application.conf
 - **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
-- **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям из разных потоков
+- **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям и задачам из разных потоков
 
 ## External Dependencies
 - **Anthropic Claude API** (requires API key)

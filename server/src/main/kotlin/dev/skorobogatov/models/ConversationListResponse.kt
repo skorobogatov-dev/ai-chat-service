@@ -17,3 +17,9 @@ data class ConversationListResponse(
     val conversations: List<ConversationListItem>,
     val totalCount: Int
 )
+
+@Serializable
+data class DeleteConversationResponse(
+    val success: Boolean,
+    val message: String
+)

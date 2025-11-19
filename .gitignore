@@ -43,4 +43,5 @@ bin/
 local.properties
 
 chat_sessions/
+scheduled_tasks/
 *.log

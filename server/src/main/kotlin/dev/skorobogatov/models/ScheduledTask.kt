@@ -45,6 +45,7 @@ data class TaskSchedule(
 @Serializable
 enum class ScheduleType {
     ONCE,      // Одноразовое выполнение в указанное время
+    MINUTELY,  // Ежеминутно (для тестирования)
     DAILY,     // Ежедневно в указанное время
     WEEKLY     // Еженедельно в указанный день и время
 }

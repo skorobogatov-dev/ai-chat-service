@@ -20,7 +20,8 @@ enum class MessageType {
 data class HistoryMessage(
     val type: MessageType,
     val content: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val fromScheduledTask: Boolean = false  // Флаг для сообщений от запланированных задач
 )
 
 /**
@@ -38,8 +39,8 @@ data class ConversationHistory(
     /**
      * Добавить сообщение в историю
      */
-    fun addMessage(type: MessageType, content: String) {
-        messages.add(HistoryMessage(type, content))
+    fun addMessage(type: MessageType, content: String, fromScheduledTask: Boolean = false) {
+        messages.add(HistoryMessage(type, content, fromScheduledTask = fromScheduledTask))
         lastAccessedAt = System.currentTimeMillis()
     }
 
@@ -73,9 +74,13 @@ data class ConversationHistory(
     }
 
     /**
-     * Получить количество непрочитанных сообщений
+     * Получить количество непрочитанных сообщений от ассистента
      */
     fun getUnreadCount(): Int {
-        return maxOf(0, messages.size - 1 - lastReadMessageIndex)
+        if (lastReadMessageIndex >= messages.size - 1) return 0
+
+        return messages
+            .drop(lastReadMessageIndex + 1)
+            .count { it.type == MessageType.ASSISTANT }
     }
 }

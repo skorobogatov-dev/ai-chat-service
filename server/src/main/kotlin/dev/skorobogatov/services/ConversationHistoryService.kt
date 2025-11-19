@@ -66,9 +66,9 @@ class ConversationHistoryService(
     /**
      * Добавить сообщение пользователя
      */
-    fun addUserMessage(sessionId: String, message: String) {
+    fun addUserMessage(sessionId: String, message: String, fromScheduledTask: Boolean = false) {
         val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
-        session.addMessage(MessageType.USER, message)
+        session.addMessage(MessageType.USER, message, fromScheduledTask)
         logger.debug("Added user message to session $sessionId")
         saveSession(session)
     }
@@ -76,10 +76,10 @@ class ConversationHistoryService(
     /**
      * Добавить ответ ассистента
      */
-    fun addAssistantMessage(sessionId: String, message: String) {
+    fun addAssistantMessage(sessionId: String, message: String, fromScheduledTask: Boolean = false) {
         val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
-        session.addMessage(MessageType.ASSISTANT, message)
-        logger.debug("Added assistant message to session $sessionId")
+        session.addMessage(MessageType.ASSISTANT, message, fromScheduledTask)
+        logger.debug("Added assistant message to session $sessionId (fromScheduledTask=$fromScheduledTask)")
         saveSession(session)
     }
 
@@ -194,6 +194,20 @@ class ConversationHistoryService(
         session.lastReadMessageIndex = session.messages.size - 1
         logger.debug("Marked all messages as read for session $sessionId")
         saveSession(session)
+    }
+
+    /**
+     * Удалить диалог
+     */
+    fun deleteConversation(sessionId: String): Boolean {
+        val removed = sessions.remove(sessionId) != null
+        if (removed) {
+            fileStorageService?.deleteConversation(sessionId)
+            logger.info("Deleted conversation: $sessionId")
+        } else {
+            logger.warn("Attempted to delete non-existent conversation: $sessionId")
+        }
+        return removed
     }
 
     /**

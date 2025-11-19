@@ -160,20 +160,37 @@ class SchedulerService(
         logger.info("Executing task: ${task.id} - ${task.name}")
         val startTime = System.currentTimeMillis()
 
+        // Определяем sessionId для записи результата (вне try чтобы был доступен в catch)
+        val isNewSession = task.sessionId == null
+        var targetSessionId = task.sessionId ?: run {
+            // Создаем новую сессию если не указана
+            historyService.getOrCreateSession(null).sessionId
+        }
+
         try {
-            // Определяем sessionId для записи результата
-            val targetSessionId = task.sessionId ?: run {
-                // Создаем новую сессию если не указана
-                historyService.getOrCreateSession(null).sessionId
+
+            // Устанавливаем название задачи как название диалога для новых сессий
+            if (isNewSession) {
+                historyService.setConversationTitle(targetSessionId, task.name)
+                logger.debug("Set conversation title for new session $targetSessionId: ${task.name}")
             }
 
-            // Добавляем вопрос пользователя в историю
-            historyService.addUserMessage(targetSessionId, task.question)
-
-            // Получаем сессию и конвертируем в формат Claude
+            // Получаем текущую сессию
             val session = historyService.getSession(targetSessionId)
                 ?: throw IllegalStateException("Session not found: $targetSessionId")
-            val allMessages = session.toClaudeMessages()
+
+            // Формируем сообщения для отправки в Claude
+            val allMessages = if (isNewSession) {
+                // При первом выполнении добавляем вопрос в историю с флагом fromScheduledTask
+                historyService.addUserMessage(targetSessionId, task.question, fromScheduledTask = true)
+                // И берем обновленную историю
+                historyService.getSession(targetSessionId)!!.toClaudeMessages()
+            } else {
+                // При последующих выполнениях НЕ добавляем вопрос в историю,
+                // но отправляем его в Claude как временное сообщение
+                val currentMessages = session.toClaudeMessages()
+                currentMessages + ClaudeMessage(role = "user", content = task.question)
+            }
 
             // Проверяем наличие MCP инструментов и отправляем вопрос в Claude
             val connectionStatus = mcpService.getConnectionStatus()
@@ -225,8 +242,8 @@ class SchedulerService(
                 claudeService.sendMessage(allMessages, systemPrompt = null)
             }
 
-            // Добавляем ответ ассистента в историю
-            historyService.addAssistantMessage(targetSessionId, response.response)
+            // Добавляем ответ ассистента в историю с флагом fromScheduledTask
+            historyService.addAssistantMessage(targetSessionId, response.response, fromScheduledTask = true)
 
             // Сохраняем результат выполнения
             val execution = TaskExecution(
@@ -242,11 +259,16 @@ class SchedulerService(
 
             // Обновляем задачу
             val updatedTask = task.copy(
+                sessionId = targetSessionId,  // Сохраняем sessionId чтобы использовать его в следующих выполнениях
                 lastExecutedAt = LocalDateTime.now(),
                 nextExecutionAt = calculateNextExecution(task.schedule, LocalDateTime.now())
             )
             tasks[task.id] = updatedTask
             taskStorage.saveTask(updatedTask)
+
+            if (isNewSession) {
+                logger.info("Task ${task.id} now linked to session $targetSessionId")
+            }
 
             logger.info("Successfully executed task: ${task.id}")
 
@@ -263,16 +285,17 @@ class SchedulerService(
                 taskName = task.name,
                 question = task.question,
                 response = "",
-                sessionId = task.sessionId ?: "",
+                sessionId = targetSessionId,
                 success = false,
                 errorMessage = e.message,
                 executionTimeMs = System.currentTimeMillis() - startTime
             )
             taskStorage.saveExecution(execution)
 
-            // Даже при ошибке перепланируем периодические задачи
+            // Даже при ошибке перепланируем периодические задачи и сохраняем sessionId
             if (task.schedule.type != ScheduleType.ONCE && task.enabled) {
                 val updatedTask = task.copy(
+                    sessionId = targetSessionId,  // Сохраняем sessionId даже при ошибке
                     lastExecutedAt = LocalDateTime.now(),
                     nextExecutionAt = calculateNextExecution(task.schedule, LocalDateTime.now())
                 )
@@ -313,6 +336,10 @@ class SchedulerService(
         return when (schedule.type) {
             ScheduleType.ONCE -> {
                 schedule.startTime
+            }
+            ScheduleType.MINUTELY -> {
+                // Следующее выполнение через минуту
+                from.plusMinutes(1).withSecond(0).withNano(0)
             }
             ScheduleType.DAILY -> {
                 val hour = schedule.hour ?: return null
