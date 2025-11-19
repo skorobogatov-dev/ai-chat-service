@@ -32,7 +32,8 @@ data class ConversationHistory(
     var title: String? = null,  // Название диалога (генерируется автоматически)
     val messages: MutableList<HistoryMessage> = mutableListOf(),
     val createdAt: Long = System.currentTimeMillis(),
-    var lastAccessedAt: Long = System.currentTimeMillis()
+    var lastAccessedAt: Long = System.currentTimeMillis(),
+    var lastReadMessageIndex: Int = -1  // Индекс последнего прочитанного сообщения
 ) {
     /**
      * Добавить сообщение в историю
@@ -69,5 +70,12 @@ data class ConversationHistory(
             }
             ClaudeMessage(role = role, content = msg.content)
         }
+    }
+
+    /**
+     * Получить количество непрочитанных сообщений
+     */
+    fun getUnreadCount(): Int {
+        return maxOf(0, messages.size - 1 - lastReadMessageIndex)
     }
 }

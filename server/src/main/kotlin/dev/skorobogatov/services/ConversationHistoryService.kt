@@ -187,6 +187,16 @@ class ConversationHistoryService(
     }
 
     /**
+     * Пометить все сообщения как прочитанные
+     */
+    fun markAllAsRead(sessionId: String) {
+        val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
+        session.lastReadMessageIndex = session.messages.size - 1
+        logger.debug("Marked all messages as read for session $sessionId")
+        saveSession(session)
+    }
+
+    /**
      * Получить список всех диалогов
      */
     fun getAllConversations(): List<ConversationHistory> {

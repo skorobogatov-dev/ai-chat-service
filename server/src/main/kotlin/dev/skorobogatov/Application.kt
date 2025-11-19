@@ -75,12 +75,25 @@ fun Application.module() {
     // Создание сервиса для работы с MCP (Model Context Protocol)
     val mcpService = dev.skorobogatov.services.MCPService()
 
+    // Создание сервиса для хранения задач
+    val taskStorageService = dev.skorobogatov.services.TaskStorageService(
+        storageDirectory = "scheduled_tasks"
+    )
+
+    // Создание планировщика задач
+    val schedulerService = dev.skorobogatov.services.SchedulerService(
+        taskStorage = taskStorageService,
+        claudeService = claudeService,
+        historyService = historyService,
+        mcpService = mcpService
+    )
+
     // Конфигурация плагинов
     configureSerialization()
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
-    configureRouting(claudeService, historyService, mcpService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService)
 
     // Автоматическое подключение к MCP серверу, если URL задан
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()

@@ -17,7 +17,7 @@ private val logger = LoggerFactory.getLogger("ChatRoutes")
 /**
  * Конвертирует MCP схему в JsonObject для Claude API
  */
-private fun convertMcpSchemaToJson(inputSchema: JsonObject?): JsonObject {
+internal fun convertMcpSchemaToJson(inputSchema: JsonObject?): JsonObject {
     // Схема уже приходит в правильном формате из MCPService
     return inputSchema ?: buildJsonObject {
         put("type", "object")
@@ -183,7 +183,8 @@ fun Route.chatRoutes(
                 dev.skorobogatov.models.HistoryMessageDto(
                     type = msg.type.name,
                     content = msg.content,
-                    timestamp = msg.timestamp
+                    timestamp = msg.timestamp,
+                    fromScheduledTask = msg.fromScheduledTask
                 )
             }
 
@@ -216,7 +217,8 @@ fun Route.chatRoutes(
                     title = session.title,
                     messageCount = session.messages.size,
                     createdAt = session.createdAt,
-                    lastAccessedAt = session.lastAccessedAt
+                    lastAccessedAt = session.lastAccessedAt,
+                    unreadCount = session.getUnreadCount()
                 )
             }
 
@@ -228,6 +230,56 @@ fun Route.chatRoutes(
             call.respond(HttpStatusCode.OK, response)
         } catch (e: Exception) {
             logger.error("Error retrieving conversations list", e)
+            call.respond(
+                HttpStatusCode.InternalServerError,
+                mapOf("error" to (e.message ?: "Unknown error occurred"))
+            )
+        }
+    }
+
+    // Delete conversation endpoint
+    delete("/api/chat/conversations/{sessionId}") {
+        try {
+            val sessionId = call.parameters["sessionId"]
+            if (sessionId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Session ID is required"))
+                return@delete
+            }
+
+            val deleted = historyService.deleteConversation(sessionId)
+            if (deleted) {
+                call.respond(HttpStatusCode.OK, DeleteConversationResponse(
+                    success = true,
+                    message = "Conversation deleted"
+                ))
+            } else {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Conversation not found"))
+            }
+        } catch (e: Exception) {
+            logger.error("Error deleting conversation", e)
+            call.respond(
+                HttpStatusCode.InternalServerError,
+                mapOf("error" to (e.message ?: "Unknown error occurred"))
+            )
+        }
+    }
+
+    // Mark messages as read endpoint
+    post("/api/chat/mark-read/{sessionId}") {
+        try {
+            val sessionId = call.parameters["sessionId"]
+            if (sessionId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Session ID is required"))
+                return@post
+            }
+
+            historyService.markAllAsRead(sessionId)
+            call.respond(HttpStatusCode.OK, mapOf("success" to true))
+        } catch (e: IllegalArgumentException) {
+            logger.error("Session not found for mark-read", e)
+            call.respond(HttpStatusCode.NotFound, mapOf("error" to e.message))
+        } catch (e: Exception) {
+            logger.error("Error marking messages as read", e)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 mapOf("error" to (e.message ?: "Unknown error occurred"))

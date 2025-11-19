@@ -35,6 +35,7 @@
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="chat">💬 Чат</button>
                 <button class="tab-button" data-tab="mcp">🔧 MCP Tools</button>
+                <button class="tab-button" data-tab="tasks">⏰ Задачи</button>
             </div>
 
             <!-- Chat Tab Content -->
@@ -118,6 +119,107 @@
                     <div id="toolCallSection" class="mcp-section" style="display: none;">
                         <h2>📤 Результат вызова инструмента</h2>
                         <div id="toolCallResult" class="tool-call-result"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tasks Tab Content -->
+            <div id="tasksTab" class="tab-content">
+                <div class="tasks-container">
+                    <!-- Create Task Section -->
+                    <div class="tasks-section">
+                        <h2>➕ Создать новую задачу</h2>
+                        <form id="createTaskForm" class="task-form">
+                            <div class="form-group">
+                                <label for="taskName">Название задачи:</label>
+                                <input type="text" id="taskName" placeholder="Например: Прогноз погоды на завтра" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="taskDescription">Описание (опционально):</label>
+                                <input type="text" id="taskDescription" placeholder="Подробное описание задачи">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="taskQuestion">Вопрос для Claude:</label>
+                                <textarea id="taskQuestion" placeholder="Например: Какая завтра погода в Москве и что можно надеть?" rows="3" required></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="taskSessionId">ID диалога (опционально):</label>
+                                <input type="text" id="taskSessionId" placeholder="Оставьте пустым для создания нового диалога">
+                                <small>Если указать, результаты будут записываться в существующий диалог</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="scheduleType">Тип расписания:</label>
+                                <select id="scheduleType" required>
+                                    <option value="ONCE">Одноразовое выполнение</option>
+                                    <option value="DAILY">Ежедневно</option>
+                                    <option value="WEEKLY">Еженедельно</option>
+                                </select>
+                            </div>
+
+                            <!-- Schedule Options -->
+                            <div id="onceSchedule" class="schedule-options">
+                                <div class="form-group">
+                                    <label for="onceDateTime">Дата и время выполнения:</label>
+                                    <input type="datetime-local" id="onceDateTime">
+                                </div>
+                            </div>
+
+                            <div id="dailySchedule" class="schedule-options" style="display: none;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="dailyHour">Час (0-23):</label>
+                                        <input type="number" id="dailyHour" min="0" max="23" value="9">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="dailyMinute">Минута (0-59):</label>
+                                        <input type="number" id="dailyMinute" min="0" max="59" value="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="weeklySchedule" class="schedule-options" style="display: none;">
+                                <div class="form-group">
+                                    <label for="weeklyDay">День недели:</label>
+                                    <select id="weeklyDay">
+                                        <option value="1">Понедельник</option>
+                                        <option value="2">Вторник</option>
+                                        <option value="3">Среда</option>
+                                        <option value="4">Четверг</option>
+                                        <option value="5">Пятница</option>
+                                        <option value="6">Суббота</option>
+                                        <option value="7">Воскресенье</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="weeklyHour">Час (0-23):</label>
+                                        <input type="number" id="weeklyHour" min="0" max="23" value="9">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="weeklyMinute">Минута (0-59):</label>
+                                        <input type="number" id="weeklyMinute" min="0" max="59" value="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary">Создать задачу</button>
+                                <button type="button" id="resetTaskForm" class="btn-secondary">Очистить</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Tasks List Section -->
+                    <div class="tasks-section">
+                        <h2>📋 Список задач</h2>
+                        <button id="refreshTasksButton" class="btn-secondary">🔄 Обновить</button>
+                        <div id="tasksList" class="tasks-list">
+                            <div class="loading">Загрузка задач...</div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -8,7 +8,8 @@ data class ConversationListItem(
     val title: String?,
     val messageCount: Int,
     val createdAt: Long,
-    val lastAccessedAt: Long
+    val lastAccessedAt: Long,
+    val unreadCount: Int = 0
 )
 
 @Serializable

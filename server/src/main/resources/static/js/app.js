@@ -15,6 +15,8 @@ class ChatApp {
         this.loadingIndicator = null;
         this.sessionId = null; // Current session ID
         this.conversations = []; // List of all conversations
+        this.pollingInterval = null; // Interval for polling conversations
+        this.currentMessageCount = 0; // Track message count for current conversation
 
         this.init();
     }
@@ -35,6 +37,33 @@ class ChatApp {
 
         // Disable history button initially
         this.updateHistoryButton();
+
+        // Start polling for conversation updates every 3 seconds
+        this.startPolling();
+    }
+
+    startPolling() {
+        // Clear any existing polling interval
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+        }
+
+        // Poll every 3 seconds
+        this.pollingInterval = setInterval(async () => {
+            await this.loadConversations();
+
+            // If viewing a conversation, check for new messages
+            if (this.sessionId) {
+                await this.refreshCurrentConversation();
+            }
+        }, 3000);
+    }
+
+    stopPolling() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
     }
 
     async loadConversations() {
@@ -72,15 +101,36 @@ class ChatApp {
             const date = new Date(conv.lastAccessedAt);
             const dateStr = this.formatDate(date);
 
+            // Add unread badge if there are unread messages
+            const unreadBadge = conv.unreadCount > 0
+                ? `<span class="unread-badge">${conv.unreadCount}</span>`
+                : '';
+
             convItem.innerHTML = `
-                <div class="conversation-title">${this.escapeHtml(title)}</div>
-                <div class="conversation-meta">
-                    <span>${conv.messageCount} сообщений</span>
-                    <span>${dateStr}</span>
+                <div class="conversation-content">
+                    <div class="conversation-title">
+                        ${this.escapeHtml(title)}
+                        ${unreadBadge}
+                    </div>
+                    <div class="conversation-meta">
+                        <span>${conv.messageCount} сообщений</span>
+                        <span>${dateStr}</span>
+                    </div>
                 </div>
+                <button class="delete-conversation-btn" data-session-id="${conv.sessionId}" title="Удалить">✕</button>
             `;
 
-            convItem.addEventListener('click', () => this.switchConversation(conv.sessionId));
+            // Click on conversation (but not delete button) to switch
+            const contentDiv = convItem.querySelector('.conversation-content');
+            contentDiv.addEventListener('click', () => this.switchConversation(conv.sessionId));
+
+            // Click on delete button
+            const deleteBtn = convItem.querySelector('.delete-conversation-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent switching conversation
+                this.deleteConversation(conv.sessionId);
+            });
+
             this.conversationsList.appendChild(convItem);
         });
     }
@@ -115,8 +165,22 @@ class ChatApp {
             // Display all messages
             historyData.messages.forEach(msg => {
                 const type = msg.type === 'USER' ? 'user' : 'assistant';
-                this.addMessage(msg.content, type, null, null, false);
+                this.addMessage(msg.content, type, null, null, false, msg.fromScheduledTask || false, msg.timestamp);
             });
+
+            // Update message count for auto-refresh
+            this.currentMessageCount = historyData.messages.length;
+
+            // Mark all messages as read
+            try {
+                await fetch(`/api/chat/mark-read/${sessionId}`, {
+                    method: 'POST'
+                });
+                // Reload conversations to update unread count
+                await this.loadConversations();
+            } catch (markReadError) {
+                console.error('Error marking messages as read:', markReadError);
+            }
 
             // Update UI
             this.displayConversations();
@@ -128,10 +192,74 @@ class ChatApp {
         }
     }
 
+    async deleteConversation(sessionId) {
+        if (!confirm('Вы уверены, что хотите удалить этот диалог?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/chat/conversations/${sessionId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to delete conversation');
+            }
+
+            // If we deleted the current conversation, clear it
+            if (sessionId === this.sessionId) {
+                this.sessionId = null;
+                this.chatTitle.textContent = 'AI Chat Assistant';
+                this.messagesContainer.innerHTML = `
+                    <div class="message assistant">
+                        <div class="message-content">
+                            <strong>Assistant:</strong> Привет! Я готов помочь вам. Задайте любой вопрос.
+                        </div>
+                    </div>
+                `;
+                this.updateHistoryButton();
+            }
+
+            // Reload conversations list
+            await this.loadConversations();
+        } catch (error) {
+            console.error('Error deleting conversation:', error);
+            alert('Не удалось удалить диалог');
+        }
+    }
+
+    async refreshCurrentConversation() {
+        try {
+            const response = await fetch(`/api/chat/history/${this.sessionId}`);
+            if (!response.ok) {
+                return; // Silently fail if history can't be loaded
+            }
+
+            const historyData = await response.json();
+
+            // Check if there are new messages
+            if (historyData.messages.length > this.currentMessageCount) {
+                // Add only new messages
+                const newMessages = historyData.messages.slice(this.currentMessageCount);
+                newMessages.forEach(msg => {
+                    const type = msg.type === 'USER' ? 'user' : 'assistant';
+                    this.addMessage(msg.content, type, null, null, false, msg.fromScheduledTask || false, msg.timestamp);
+                });
+
+                // Update message count
+                this.currentMessageCount = historyData.messages.length;
+            }
+        } catch (error) {
+            // Silently fail - don't interrupt user experience
+            console.error('Error refreshing conversation:', error);
+        }
+    }
+
     createNewConversation() {
         // Clear session ID to start new conversation
         this.sessionId = null;
         this.chatTitle.textContent = 'AI Chat Assistant';
+        this.currentMessageCount = 0;
 
         // Clear messages
         this.messagesContainer.innerHTML = `
@@ -200,6 +328,9 @@ class ChatApp {
                 historyCompressed: response.historyCompressed
             });
 
+            // Update message count (user message + assistant response)
+            this.currentMessageCount += 2;
+
             // Reload conversations list to update it
             await this.loadConversations();
 
@@ -258,20 +389,48 @@ class ChatApp {
         return data;
     }
 
-    addMessage(text, type, model = null, stats = null, scrollToBottom = true) {
+    formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+        const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+        if (messageDate.getTime() === today.getTime()) {
+            return time;
+        } else {
+            const dateStr = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+            return `${dateStr} ${time}`;
+        }
+    }
+
+    addMessage(text, type, model = null, stats = null, scrollToBottom = true, fromScheduledTask = false, timestamp = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
 
-        const label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
+        let label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
+        // Add clock icon for messages from scheduled tasks
+        if (fromScheduledTask && type !== 'error') {
+            label = `⏰ ${label}`;
+        }
         let modelInfo = '';
         if (model && type === 'assistant') {
             const modelName = this.getModelDisplayName(model);
             modelInfo = ` <span class="model-badge">${modelName}</span>`;
         }
-        contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${this.escapeHtml(text)}`;
+
+        // Add timestamp if available
+        let timestampInfo = '';
+        if (timestamp) {
+            const formattedTime = this.formatTimestamp(timestamp);
+            timestampInfo = ` <span class="message-timestamp">${formattedTime}</span>`;
+        }
+
+        contentDiv.innerHTML = `<strong>${label}:${modelInfo}${timestampInfo}</strong> ${this.escapeHtml(text)}`;
 
         messageDiv.appendChild(contentDiv);
 
@@ -768,8 +927,266 @@ class MCPManager {
     }
 }
 
+// Task Manager Class
+class TaskManager {
+    constructor() {
+        this.createTaskForm = document.getElementById('createTaskForm');
+        this.tasksList = document.getElementById('tasksList');
+        this.scheduleTypeSelect = document.getElementById('scheduleType');
+        this.refreshTasksButton = document.getElementById('refreshTasksButton');
+        this.resetTaskFormButton = document.getElementById('resetTaskForm');
+
+        this.tasks = [];
+
+        this.init();
+    }
+
+    init() {
+        // Event listeners
+        this.createTaskForm.addEventListener('submit', (e) => this.handleCreateTask(e));
+        this.scheduleTypeSelect.addEventListener('change', () => this.updateScheduleOptions());
+        this.refreshTasksButton.addEventListener('click', () => this.loadTasks());
+        this.resetTaskFormButton.addEventListener('click', () => this.resetForm());
+
+        // Load tasks initially
+        this.loadTasks();
+    }
+
+    updateScheduleOptions() {
+        const type = this.scheduleTypeSelect.value;
+
+        document.getElementById('onceSchedule').style.display = type === 'ONCE' ? 'block' : 'none';
+        document.getElementById('dailySchedule').style.display = type === 'DAILY' ? 'block' : 'none';
+        document.getElementById('weeklySchedule').style.display = type === 'WEEKLY' ? 'block' : 'none';
+    }
+
+    async handleCreateTask(e) {
+        e.preventDefault();
+
+        const name = document.getElementById('taskName').value.trim();
+        const description = document.getElementById('taskDescription').value.trim();
+        const question = document.getElementById('taskQuestion').value.trim();
+        const sessionId = document.getElementById('taskSessionId').value.trim() || null;
+        const scheduleType = this.scheduleTypeSelect.value;
+
+        if (!name || !question) {
+            alert('Пожалуйста, заполните обязательные поля');
+            return;
+        }
+
+        // Build schedule object
+        const schedule = { type: scheduleType };
+
+        if (scheduleType === 'ONCE') {
+            const dateTime = document.getElementById('onceDateTime').value;
+            if (!dateTime) {
+                alert('Пожалуйста, укажите дату и время');
+                return;
+            }
+            schedule.startTime = dateTime + ':00';
+        } else if (scheduleType === 'DAILY') {
+            schedule.hour = parseInt(document.getElementById('dailyHour').value);
+            schedule.minute = parseInt(document.getElementById('dailyMinute').value);
+        } else if (scheduleType === 'WEEKLY') {
+            schedule.dayOfWeek = parseInt(document.getElementById('weeklyDay').value);
+            schedule.hour = parseInt(document.getElementById('weeklyHour').value);
+            schedule.minute = parseInt(document.getElementById('weeklyMinute').value);
+        }
+
+        const taskData = {
+            name,
+            description,
+            question,
+            sessionId,
+            schedule
+        };
+
+        try {
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(taskData)
+            });
+
+            if (response.ok) {
+                alert('Задача успешно создана!');
+                this.resetForm();
+                this.loadTasks();
+            } else {
+                const error = await response.json();
+                alert(`Ошибка: ${error.error || 'Не удалось создать задачу'}`);
+            }
+        } catch (error) {
+            console.error('Error creating task:', error);
+            alert('Ошибка при создании задачи');
+        }
+    }
+
+    async loadTasks() {
+        try {
+            const response = await fetch('/api/tasks');
+            const data = await response.json();
+
+            this.tasks = data.tasks || [];
+            this.renderTasks();
+        } catch (error) {
+            console.error('Error loading tasks:', error);
+            this.tasksList.innerHTML = '<p class="error">Ошибка загрузки задач</p>';
+        }
+    }
+
+    renderTasks() {
+        if (this.tasks.length === 0) {
+            this.tasksList.innerHTML = '<p class="mcp-placeholder">Нет созданных задач</p>';
+            return;
+        }
+
+        this.tasksList.innerHTML = this.tasks.map(task => this.renderTask(task)).join('');
+
+        // Add event listeners for task actions
+        this.tasks.forEach(task => {
+            const deleteBtn = document.getElementById(`delete-${task.id}`);
+            const toggleBtn = document.getElementById(`toggle-${task.id}`);
+            const viewBtn = document.getElementById(`view-${task.id}`);
+
+            if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteTask(task.id));
+            if (toggleBtn) toggleBtn.addEventListener('click', () => this.toggleTask(task.id, !task.enabled));
+            if (viewBtn) viewBtn.addEventListener('click', () => this.viewExecutions(task.id));
+        });
+    }
+
+    renderTask(task) {
+        const scheduleText = this.getScheduleText(task.schedule);
+        const nextExecution = task.nextExecutionAt ? new Date(task.nextExecutionAt).toLocaleString('ru-RU') : 'N/A';
+        const lastExecution = task.lastExecutedAt ? new Date(task.lastExecutedAt).toLocaleString('ru-RU') : 'Никогда';
+
+        return `
+            <div class="task-card ${task.enabled ? '' : 'disabled'}">
+                <div class="task-header">
+                    <h3>${this.escapeHtml(task.name)}</h3>
+                    <span class="task-status ${task.enabled ? 'enabled' : 'disabled'}">
+                        ${task.enabled ? '🟢 Активна' : '⚫ Отключена'}
+                    </span>
+                </div>
+
+                ${task.description ? `<p class="task-description">${this.escapeHtml(task.description)}</p>` : ''}
+
+                <div class="task-details">
+                    <p><strong>Вопрос:</strong> ${this.escapeHtml(task.question)}</p>
+                    <p><strong>Расписание:</strong> ${scheduleText}</p>
+                    <p><strong>Следующее выполнение:</strong> ${nextExecution}</p>
+                    <p><strong>Последнее выполнение:</strong> ${lastExecution}</p>
+                    ${task.sessionId ? `<p><strong>ID диалога:</strong> <code>${task.sessionId}</code></p>` : ''}
+                </div>
+
+                <div class="task-actions">
+                    <button id="toggle-${task.id}" class="btn-secondary">
+                        ${task.enabled ? '⏸️ Остановить' : '▶️ Запустить'}
+                    </button>
+                    <button id="view-${task.id}" class="btn-secondary">📊 История</button>
+                    <button id="delete-${task.id}" class="btn-danger">🗑️ Удалить</button>
+                </div>
+            </div>
+        `;
+    }
+
+    getScheduleText(schedule) {
+        switch (schedule.type) {
+            case 'ONCE':
+                return `Одноразово: ${new Date(schedule.startTime).toLocaleString('ru-RU')}`;
+            case 'MINUTELY':
+                return `Ежеминутно (тестовый режим)`;
+            case 'DAILY':
+                return `Ежедневно в ${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
+            case 'WEEKLY':
+                const days = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+                return `Еженедельно, ${days[schedule.dayOfWeek]} в ${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
+            default:
+                return 'Неизвестно';
+        }
+    }
+
+    async toggleTask(taskId, enabled) {
+        try {
+            const response = await fetch(`/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            });
+
+            if (response.ok) {
+                this.loadTasks();
+            } else {
+                alert('Ошибка при изменении статуса задачи');
+            }
+        } catch (error) {
+            console.error('Error toggling task:', error);
+            alert('Ошибка при изменении статуса задачи');
+        }
+    }
+
+    async deleteTask(taskId) {
+        if (!confirm('Вы уверены, что хотите удалить эту задачу?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.loadTasks();
+            } else {
+                alert('Ошибка при удалении задачи');
+            }
+        } catch (error) {
+            console.error('Error deleting task:', error);
+            alert('Ошибка при удалении задачи');
+        }
+    }
+
+    async viewExecutions(taskId) {
+        try {
+            const response = await fetch(`/api/tasks/${taskId}/executions`);
+            const data = await response.json();
+
+            if (data.executions && data.executions.length > 0) {
+                const executionsHtml = data.executions.map(ex => `
+                    <div class="execution-item ${ex.success ? 'success' : 'error'}">
+                        <p><strong>Выполнено:</strong> ${new Date(ex.executedAt).toLocaleString('ru-RU')}</p>
+                        <p><strong>Статус:</strong> ${ex.success ? '✅ Успешно' : '❌ Ошибка'}</p>
+                        <p><strong>Время выполнения:</strong> ${ex.executionTimeMs}мс</p>
+                        ${ex.response ? `<p><strong>Ответ:</strong> ${this.escapeHtml(ex.response.substring(0, 200))}...</p>` : ''}
+                        ${ex.errorMessage ? `<p class="error"><strong>Ошибка:</strong> ${this.escapeHtml(ex.errorMessage)}</p>` : ''}
+                    </div>
+                `).join('');
+
+                alert('История выполнений:\n\n' + executionsHtml.replace(/<[^>]*>/g, '\n'));
+            } else {
+                alert('Нет истории выполнений для этой задачи');
+            }
+        } catch (error) {
+            console.error('Error loading executions:', error);
+            alert('Ошибка при загрузке истории выполнений');
+        }
+    }
+
+    resetForm() {
+        this.createTaskForm.reset();
+        this.updateScheduleOptions();
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new ChatApp();
     new MCPManager();
+    new TaskManager();
 });

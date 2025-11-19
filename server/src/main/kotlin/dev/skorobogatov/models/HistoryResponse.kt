@@ -16,5 +16,6 @@ data class HistoryResponse(
 data class HistoryMessageDto(
     val type: String,
     val content: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val fromScheduledTask: Boolean = false
 )
