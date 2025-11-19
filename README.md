@@ -1,17 +1,24 @@
 # AI Chat Service
 
-REST API сервис на Ktor для взаимодействия с Claude AI от Anthropic.
+Multi-module Ktor проект для взаимодействия с Claude AI от Anthropic.
 
-## ✨ Новое: MCP Integration
+## ✨ Новая архитектура: Multi-Module Project
 
-**Теперь с полной поддержкой Model Context Protocol (MCP)!**
+**Проект разделён на независимые модули:**
 
-🌤️ **Weather MCP Server** - Claude автоматически получает данные о погоде через MCP протокол
+🖥️ **Server** - основной REST API сервер с веб-интерфейсом
+🌤️ **MCP Weather Server** - отдельный MCP сервер для погоды
 
-📚 **Быстрый старт:**
-- **[QUICKSTART.md](./QUICKSTART.md)** - запуск за 3 шага
-- **[MCP_INTEGRATION_GUIDE.md](./MCP_INTEGRATION_GUIDE.md)** - полный гайд по MCP
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - архитектура и диаграммы
+**Преимущества модульной структуры:**
+- Независимая сборка и развёртывание модулей
+- Упрощённое управление зависимостями
+- Возможность масштабирования
+- Простота добавления новых MCP серверов
+
+📚 **Документация:**
+- **[CLAUDE.md](./CLAUDE.md)** - полная документация по архитектуре и API
+- **[QUICKSTART.md](./QUICKSTART.md)** - быстрый старт (если существует)
+- **[MCP_INTEGRATION_GUIDE.md](./MCP_INTEGRATION_GUIDE.md)** - гайд по MCP (если существует)
 
 ## Технологии
 
@@ -66,19 +73,42 @@ export ANTHROPIC_API_KEY="sk-ant-api03-..."
 
 ## Запуск
 
-### Development режим
+### Запуск основного сервера
 
 ```bash
-./gradlew run
+# Установить API ключ
+export ANTHROPIC_API_KEY="your-api-key"
+
+# Собрать и запустить
+./gradlew :server:run
 ```
 
 Сервер запустится на `http://localhost:8080`
 
+### Запуск с MCP Weather Server
+
+**Терминал 1 - MCP Weather Server:**
+```bash
+./gradlew :mcp-weather-server:run
+```
+
+**Терминал 2 - Main Server:**
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
+export MCP_SERVER_URL="ws://localhost:3000/mcp"
+./gradlew :server:run
+```
+
 ### Production build
 
 ```bash
-./gradlew installDist
-./build/install/ai-chat-service/bin/ai-chat-service
+# Server
+./gradlew :server:installDist
+./server/build/install/server/bin/server
+
+# MCP Weather Server
+./gradlew :mcp-weather-server:installDist
+./mcp-weather-server/build/install/mcp-weather-server/bin/mcp-weather-server
 ```
 
 ## API Endpoints
@@ -163,26 +193,59 @@ http POST localhost:8080/api/chat message="Что такое Kotlin?"
 ## Структура проекта
 
 ```
-src/main/kotlin/com/example/
-├── Application.kt              # Entry point, конфигурация
-├── models/
-│   ├── ChatRequest.kt         # DTO для запроса
-│   ├── ChatResponse.kt        # DTO для ответа
-│   └── ClaudeApiModels.kt     # Модели Anthropic API
-├── services/
-│   └── ClaudeService.kt       # Сервис для работы с Claude API
-├── routes/
-│   └── ChatRoutes.kt          # REST endpoints
-└── plugins/
-    ├── Serialization.kt       # JSON сериализация
-    ├── HTTP.kt                # CORS настройки
-    ├── StatusPages.kt         # Обработка ошибок
-    └── Routing.kt             # Routing конфигурация
+ai-chat-service/
+├── server/                              # Основной REST API сервер
+│   ├── src/main/kotlin/dev/skorobogatov/
+│   │   ├── Application.kt               # Entry point
+│   │   ├── models/                      # DTO и модели
+│   │   │   ├── ChatRequest.kt
+│   │   │   ├── ChatResponse.kt
+│   │   │   ├── ClaudeApiModels.kt
+│   │   │   ├── ConversationHistory.kt
+│   │   │   └── MCPModels.kt
+│   │   ├── services/                    # Бизнес-логика
+│   │   │   ├── ClaudeService.kt         # Интеграция с Claude API
+│   │   │   ├── ConversationHistoryService.kt
+│   │   │   ├── FileStorageService.kt
+│   │   │   └── MCPService.kt            # MCP клиент
+│   │   ├── routes/                      # REST endpoints
+│   │   │   ├── ChatRoutes.kt
+│   │   │   └── MCPRoutes.kt
+│   │   └── plugins/                     # Ktor plugins
+│   │       ├── Serialization.kt
+│   │       ├── HTTP.kt
+│   │       ├── StatusPages.kt
+│   │       ├── StaticContent.kt
+│   │       └── Routing.kt
+│   ├── src/main/resources/
+│   │   ├── application.conf             # Конфигурация
+│   │   ├── logback.xml                  # Логирование
+│   │   └── static/                      # Веб-интерфейс
+│   └── build.gradle.kts
+│
+├── mcp-weather-server/                  # MCP сервер погоды
+│   ├── src/main/kotlin/dev/skorobogatov/mcp/weather/
+│   │   ├── WeatherMCPServer.kt          # WebSocket MCP сервер
+│   │   ├── WeatherService.kt            # Интеграция с погодным API
+│   │   └── WeatherModels.kt             # Модели данных
+│   ├── src/main/resources/
+│   │   └── logback.xml
+│   └── build.gradle.kts
+│
+├── web/                                 # Веб-интерфейс (источник)
+│   ├── index.html
+│   ├── css/
+│   └── js/
+│
+├── settings.gradle.kts                  # Конфигурация модулей
+└── build.gradle.kts                     # Корневой build файл
 ```
 
 ## Конфигурация
 
-Все настройки находятся в `src/main/resources/application.conf`:
+### Server module
+
+Настройки основного сервера в `server/src/main/resources/application.conf`:
 
 ```hocon
 ktor {
@@ -259,13 +322,25 @@ export CLAUDE_SYSTEM_PROMPT="Отвечай всегда кратко, макс�
 ### Запуск тестов
 
 ```bash
+# Все модули
 ./gradlew test
+
+# Конкретный модуль
+./gradlew :server:test
 ```
 
-### Форматирование кода
+### Сборка модулей
 
 ```bash
-./gradlew ktlintFormat
+# Все модули
+./gradlew build
+
+# Конкретный модуль
+./gradlew :server:build
+./gradlew :mcp-weather-server:build
+
+# Очистка
+./gradlew clean
 ```
 
 ## 🌤️ MCP Integration - Weather Tools
@@ -274,20 +349,19 @@ export CLAUDE_SYSTEM_PROMPT="Отвечай всегда кратко, макс�
 
 **Терминал 1 - Weather MCP Server:**
 ```bash
-./run-weather-server.sh
+./gradlew :mcp-weather-server:run
 ```
 
-**Терминал 2 - Основное приложение:**
+**Терминал 2 - Основной сервер:**
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-./run-main-with-mcp.sh
+export MCP_SERVER_URL="ws://localhost:3000/mcp"
+./gradlew :server:run
 ```
 
 **Терминал 3 - Тест:**
 ```bash
-./test-weather-integration.sh
-
-# Или вручную:
+# Задать вопрос о погоде - Claude автоматически использует MCP инструмент
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Какая погода в Москве?"}'
@@ -314,23 +388,23 @@ REST API → Weather MCP Server → Open-Meteo API
 - `get_weather(city)` - текущая погода
 - `get_forecast(city, days)` - прогноз на N дней
 
-### Документация MCP
+### Подробная документация
 
-- **[QUICKSTART.md](./QUICKSTART.md)** - запуск за 3 шага
-- **[MCP_INTEGRATION_GUIDE.md](./MCP_INTEGRATION_GUIDE.md)** - полный гайд
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - архитектура системы
+- **[CLAUDE.md](./CLAUDE.md)** - полная документация по архитектуре, API и командам
 
 ## Возможные улучшения
 
 - [x] Поддержка контекста диалога (сделано с history compression)
 - [x] Сохранение истории сообщений (персистентное хранилище в JSON)
 - [x] Model Context Protocol (MCP) интеграция
+- [x] Multi-module архитектура
 - [ ] Добавить Swagger/OpenAPI документацию
 - [ ] Реализовать streaming ответов (Server-Sent Events)
 - [ ] Добавить rate limiting
 - [ ] Сохранение истории в БД (сейчас JSON файлы)
 - [ ] Аутентификация пользователей
 - [ ] Метрики и мониторинг
+- [ ] Создать дополнительные MCP серверы (база данных, файлы, и т.д.)
 
 ## Лицензия
 

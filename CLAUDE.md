@@ -4,21 +4,87 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Chat Service - REST API сервис на Ktor для взаимодействия с Claude AI через Anthropic API.
+AI Chat Service - multi-module проект на Ktor для взаимодействия с Claude AI через Anthropic API.
+
+### Модульная структура
+
+Проект разделён на независимые модули:
+
+```
+ai-chat-service/
+├── server/                      # Основной REST API сервер
+│   ├── src/main/kotlin/        # Код сервера (Application.kt, routes/, services/, plugins/)
+│   ├── src/main/resources/     # Конфигурация (application.conf, logback.xml, static/)
+│   └── build.gradle.kts        # Зависимости модуля server
+├── mcp-weather-server/         # MCP сервер для погоды
+│   ├── src/main/kotlin/        # Код MCP сервера (WeatherMCPServer.kt, WeatherService.kt)
+│   ├── src/main/resources/     # Конфигурация (logback.xml)
+│   └── build.gradle.kts        # Зависимости модуля mcp-weather-server
+├── web/                        # Веб-интерфейс (исходные файлы)
+│   ├── index.html
+│   ├── css/
+│   └── js/
+├── settings.gradle.kts         # Конфигурация модулей
+└── build.gradle.kts            # Корневой build файл
+```
 
 ## Build and Development Commands
 
-### Build and Run
+### Build and Run - Server Module
+
 ```bash
-./gradlew build           # Сборка проекта
-./gradlew run             # Запуск в dev режиме
-./gradlew test            # Запуск тестов
-./gradlew installDist     # Production build
+# Сборка основного сервера
+./gradlew :server:build
+
+# Запуск основного сервера в dev режиме (порт 8080)
+./gradlew :server:run
+
+# Запуск тестов сервера
+./gradlew :server:test
+
+# Production build сервера
+./gradlew :server:installDist
+```
+
+### Build and Run - MCP Weather Server Module
+
+```bash
+# Сборка MCP погодного сервера
+./gradlew :mcp-weather-server:build
+
+# Запуск MCP погодного сервера (порт 3000)
+./gradlew :mcp-weather-server:run
+
+# Production build MCP сервера
+./gradlew :mcp-weather-server:installDist
+```
+
+### Build All Modules
+
+```bash
+# Сборка всех модулей
+./gradlew build
+
+# Очистка всех модулей
+./gradlew clean
+```
+
+### Запуск полной системы (Server + MCP Weather)
+
+```bash
+# Терминал 1: Запустить MCP Weather Server
+./gradlew :mcp-weather-server:run
+
+# Терминал 2: Запустить основной Server с подключением к MCP
+export MCP_SERVER_URL="ws://localhost:3000/mcp"
+export ANTHROPIC_API_KEY="your-api-key"
+./gradlew :server:run
 ```
 
 ### Configuration
-- Установить ANTHROPIC_API_KEY через environment или в `src/main/resources/application.conf`
-- Сервер запускается на порту 8080 (настраивается в application.conf)
+- Установить ANTHROPIC_API_KEY через environment или в `server/src/main/resources/application.conf`
+- Основной сервер запускается на порту 8080 (настраивается в application.conf)
+- MCP Weather сервер запускается на порту 3000
 - По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 - JSON формат: `{"question": "...", "answer": "...", "tags": [...]}` - в ответе пользователю выводится только поле `answer`
 
@@ -26,31 +92,33 @@ AI Chat Service - REST API сервис на Ktor для взаимодейст�
 Для автоматического подключения к MCP серверу при старте приложения:
 ```bash
 export MCP_SERVER_URL="ws://localhost:3000/mcp"
-./gradlew run
+./gradlew :server:run
 ```
 
 Когда MCP сервер подключен, Claude AI **автоматически** использует доступные инструменты:
-- При вопросе о погоде → вызов MCP инструмента `get-weather`
+- При вопросе о погоде → вызов MCP инструмента `get_weather`
 - При вопросе о данных из БД → вызов соответствующего MCP инструмента
 - Claude сам решает, когда использовать инструменты, на основе вопроса пользователя
 
 Пример использования:
 ```bash
-# 1. Запустить MCP сервер погоды (например, mcp.weather)
-# 2. Запустить приложение с MCP_SERVER_URL
+# 1. Терминал 1: Запустить MCP Weather Server
+./gradlew :mcp-weather-server:run
+
+# 2. Терминал 2: Запустить основной сервер с MCP_SERVER_URL
 export MCP_SERVER_URL="ws://localhost:3000/mcp"
 export ANTHROPIC_API_KEY="your-key"
-./gradlew run
+./gradlew :server:run
 
-# 3. Задать вопрос о погоде - Claude автоматически использует MCP инструмент
+# 3. Терминал 3: Задать вопрос о погоде - Claude автоматически использует MCP инструмент
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Какая погода в Москве?"}'
 
 # Claude:
 # 1. Получит вопрос
-# 2. Определит, что нужен инструмент get-weather
-# 3. Вызовет MCP инструмент с параметром location="Moscow"
+# 2. Определит, что нужен инструмент get_weather
+# 3. Вызовет MCP инструмент с параметром city="Москва"
 # 4. Получит данные о погоде
 # 5. Сформирует понятный ответ пользователю
 ```

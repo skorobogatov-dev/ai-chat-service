@@ -41,3 +41,6 @@ bin/
 ### Environment ###
 .env
 local.properties
+
+chat_sessions/
+*.log
