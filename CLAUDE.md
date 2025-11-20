@@ -20,6 +20,10 @@ ai-chat-service/
 │   ├── src/main/kotlin/        # Код MCP сервера (WeatherMCPServer.kt, WeatherService.kt)
 │   ├── src/main/resources/     # Конфигурация (logback.xml)
 │   └── build.gradle.kts        # Зависимости модуля mcp-weather-server
+├── mcp-activities-server/      # MCP сервер для рекомендаций активностей
+│   ├── src/main/kotlin/        # Код MCP сервера (ActivitiesMCPServer.kt, ActivitiesService.kt)
+│   ├── src/main/resources/     # Конфигурация (logback.xml)
+│   └── build.gradle.kts        # Зависимости модуля mcp-activities-server
 ├── web/                        # Веб-интерфейс (исходные файлы)
 │   ├── index.html
 │   ├── css/
@@ -59,6 +63,19 @@ ai-chat-service/
 ./gradlew :mcp-weather-server:installDist
 ```
 
+### Build and Run - MCP Activities Server Module
+
+```bash
+# Сборка MCP сервера активностей
+./gradlew :mcp-activities-server:build
+
+# Запуск MCP сервера активностей (порт 3001)
+./gradlew :mcp-activities-server:run
+
+# Production build MCP сервера
+./gradlew :mcp-activities-server:installDist
+```
+
 ### Build All Modules
 
 ```bash
@@ -69,8 +86,9 @@ ai-chat-service/
 ./gradlew clean
 ```
 
-### Запуск полной системы (Server + MCP Weather)
+### Запуск полной системы (Server + MCP Servers)
 
+**Базовый запуск (Server + Weather):**
 ```bash
 # Терминал 1: Запустить MCP Weather Server
 ./gradlew :mcp-weather-server:run
@@ -81,10 +99,34 @@ export ANTHROPIC_API_KEY="your-api-key"
 ./gradlew :server:run
 ```
 
+**Цепочка MCP серверов (Weather + Activities):**
+```bash
+# Терминал 1: Запустить MCP Weather Server
+./gradlew :mcp-weather-server:run
+
+# Терминал 2: Запустить MCP Activities Server
+./gradlew :mcp-activities-server:run
+
+# Терминал 3: Запустить основной Server
+export ANTHROPIC_API_KEY="your-api-key"
+./gradlew :server:run
+
+# Терминал 4: Подключиться к Weather MCP
+curl -X POST http://localhost:8080/api/mcp/connect \
+  -H "Content-Type: application/json" \
+  -d '{"serverUrl": "ws://localhost:3000/mcp", "transportType": "websocket"}'
+
+# Терминал 4: Задать вопрос о погоде и активностях
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Какая погода в Москве? Что можно сегодня делать?"}'
+```
+
 ### Configuration
 - Установить ANTHROPIC_API_KEY через environment или в `server/src/main/resources/application.conf`
 - Основной сервер запускается на порту 8080 (настраивается в application.conf)
 - MCP Weather сервер запускается на порту 3000
+- MCP Activities сервер запускается на порту 3001
 - По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 - JSON формат: `{"question": "...", "answer": "...", "tags": [...]}` - в ответе пользователю выводится только поле `answer`
 
@@ -96,9 +138,19 @@ export MCP_SERVER_URL="ws://localhost:3000/mcp"
 ```
 
 Когда MCP сервер подключен, Claude AI **автоматически** использует доступные инструменты:
-- При вопросе о погоде → вызов MCP инструмента `get_weather`
-- При вопросе о данных из БД → вызов соответствующего MCP инструмента
+- При вопросе о погоде → вызов MCP инструмента `get_weather` (Weather Server)
+- При вопросе о прогнозе → вызов MCP инструмента `get_forecast` (Weather Server)
+- При вопросе о рекомендациях активностей → вызов MCP инструмента `suggest_activities` (Activities Server)
 - Claude сам решает, когда использовать инструменты, на основе вопроса пользователя
+
+**Доступные MCP инструменты:**
+
+**Weather Server (порт 3000):**
+- `get_weather(city)` - получить текущую погоду для города
+- `get_forecast(city, days)` - получить прогноз на несколько дней
+
+**Activities Server (порт 3001):**
+- `suggest_activities(temperature, weather_code, precipitation?, wind_speed?, humidity?)` - предложить активности на основе погоды
 
 Пример использования:
 ```bash
@@ -121,6 +173,55 @@ curl -X POST http://localhost:8080/api/chat \
 # 3. Вызовет MCP инструмент с параметром city="Москва"
 # 4. Получит данные о погоде
 # 5. Сформирует понятный ответ пользователю
+```
+
+**Пример цепочки MCP серверов (Weather → Activities):**
+
+Чтобы продемонстрировать цепочку вызовов, когда Claude сначала получает погоду, а затем предлагает активности:
+
+```bash
+# 1. Запустить оба MCP сервера (в отдельных терминалах)
+./gradlew :mcp-weather-server:run          # Терминал 1 (порт 3000)
+./gradlew :mcp-activities-server:run       # Терминал 2 (порт 3001)
+
+# 2. Запустить основной сервер
+export ANTHROPIC_API_KEY="your-key"
+./gradlew :server:run                       # Терминал 3
+
+# 3. Подключиться к Weather MCP серверу
+curl -X POST http://localhost:8080/api/mcp/connect \
+  -H "Content-Type: application/json" \
+  -d '{"serverUrl": "ws://localhost:3000/mcp", "transportType": "websocket"}'
+
+# 4. Задать вопрос, требующий цепочки вызовов
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Какая погода в Москве сейчас? Что мне сегодня можно делать?"}'
+
+# Claude выполнит цепочку:
+# 1. Вызовет get_weather("Москва") на Weather Server
+# 2. Получит данные: температура, weather_code, осадки, ветер
+# 3. Вручную вызовет suggest_activities() на Activities Server с полученными параметрами
+#    (либо можно подключить Activities Server через MCP API)
+# 4. Объединит результаты и вернет пользователю комплексный ответ
+
+# Альтернатива: прямой вызов suggest_activities через MCP API
+curl -X POST http://localhost:8080/api/mcp/connect \
+  -H "Content-Type: application/json" \
+  -d '{"serverUrl": "ws://localhost:3001/mcp", "transportType": "websocket"}'
+
+curl -X POST http://localhost:8080/api/mcp/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolName": "suggest_activities",
+    "arguments": {
+      "temperature": 15.5,
+      "weather_code": 0,
+      "precipitation": 0,
+      "wind_speed": 10,
+      "humidity": 60
+    }
+  }'
 ```
 
 ### Testing API

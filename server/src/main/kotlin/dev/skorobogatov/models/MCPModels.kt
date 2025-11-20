@@ -19,7 +19,8 @@ data class MCPConnectionRequest(
 data class MCPToolInfo(
     val name: String,
     val description: String?,
-    val inputSchema: JsonObject? = null
+    val inputSchema: JsonObject? = null,
+    val serverUrl: String? = null // URL сервера, предоставляющего этот инструмент
 )
 
 /**
@@ -61,4 +62,31 @@ data class MCPConnectionStatus(
     val connected: Boolean,
     val serverUrl: String?,
     val error: String? = null
+)
+
+/**
+ * Информация об одном подключенном MCP сервере
+ */
+@Serializable
+data class MCPServerInfo(
+    val serverUrl: String,
+    val connected: Boolean,
+    val toolsCount: Int = 0
+)
+
+/**
+ * Список всех подключенных MCP серверов
+ */
+@Serializable
+data class MCPServersListResponse(
+    val servers: List<MCPServerInfo>,
+    val totalCount: Int
+)
+
+/**
+ * Запрос для отключения от конкретного MCP сервера
+ */
+@Serializable
+data class MCPDisconnectRequest(
+    val serverUrl: String
 )

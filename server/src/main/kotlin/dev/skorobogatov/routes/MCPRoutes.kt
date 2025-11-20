@@ -2,6 +2,7 @@ package dev.skorobogatov.routes
 
 import dev.skorobogatov.models.MCPConnectionRequest
 import dev.skorobogatov.models.MCPCallToolRequest
+import dev.skorobogatov.models.MCPDisconnectRequest
 import dev.skorobogatov.services.MCPService
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -121,19 +122,66 @@ fun Route.mcpRoutes(mcpService: MCPService) {
         }
 
         /**
-         * Отключение от MCP сервера
+         * Получение списка всех подключенных MCP серверов
+         * GET /api/mcp/servers
+         */
+        get("/servers") {
+            try {
+                logger.info("Fetching list of connected MCP servers")
+                val response = mcpService.getConnectedServers()
+                call.respond(HttpStatusCode.OK, response)
+            } catch (e: Exception) {
+                logger.error("Error fetching MCP servers list", e)
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    mapOf("error" to (e.message ?: "Unknown error occurred"))
+                )
+            }
+        }
+
+        /**
+         * Отключение от конкретного MCP сервера
          * POST /api/mcp/disconnect
+         * Body: {"serverUrl": "ws://localhost:3000/mcp"}
          */
         post("/disconnect") {
             try {
-                logger.info("Disconnecting from MCP server")
-                mcpService.disconnect()
+                val request = call.receive<MCPDisconnectRequest>()
+
+                if (request.serverUrl.isBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Server URL cannot be empty"))
+                    return@post
+                }
+
+                logger.info("Disconnecting from MCP server: ${request.serverUrl}")
+                mcpService.disconnect(request.serverUrl)
                 call.respond(
                     HttpStatusCode.OK,
-                    mapOf("message" to "Disconnected from MCP server")
+                    mapOf("message" to "Disconnected from MCP server: ${request.serverUrl}")
                 )
             } catch (e: Exception) {
                 logger.error("Error disconnecting from MCP server", e)
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    mapOf("error" to (e.message ?: "Unknown error occurred"))
+                )
+            }
+        }
+
+        /**
+         * Отключение от всех MCP серверов
+         * POST /api/mcp/disconnect-all
+         */
+        post("/disconnect-all") {
+            try {
+                logger.info("Disconnecting from all MCP servers")
+                mcpService.disconnectAll()
+                call.respond(
+                    HttpStatusCode.OK,
+                    mapOf("message" to "Disconnected from all MCP servers")
+                )
+            } catch (e: Exception) {
+                logger.error("Error disconnecting from all MCP servers", e)
                 call.respond(
                     HttpStatusCode.InternalServerError,
                     mapOf("error" to (e.message ?: "Unknown error occurred"))

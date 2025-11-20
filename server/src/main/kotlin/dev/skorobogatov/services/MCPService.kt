@@ -15,13 +15,21 @@ import org.slf4j.LoggerFactory
 
 /**
  * Сервис для работы с Model Context Protocol (MCP)
- * Управляет подключением к MCP серверу и взаимодействием с инструментами
+ * Управляет подключением к нескольким MCP серверам и взаимодействием с инструментами
  */
 class MCPService {
     private val logger = LoggerFactory.getLogger(MCPService::class.java)
-    private var mcpClient: Client? = null
-    private var currentServerUrl: String? = null
+    private val mcpClients = mutableMapOf<String, MCPConnection>()
     private val connectionMutex = Mutex()
+
+    /**
+     * Информация о подключении к MCP серверу
+     */
+    data class MCPConnection(
+        val client: Client,
+        val serverUrl: String,
+        val httpClient: HttpClient
+    )
 
     /**
      * Подключение к MCP серверу
@@ -29,6 +37,15 @@ class MCPService {
     suspend fun connect(serverUrl: String, transportType: String = "websocket"): MCPConnectionStatus {
         return connectionMutex.withLock {
             try {
+                // Проверяем, не подключены ли мы уже к этому серверу
+                if (mcpClients.containsKey(serverUrl)) {
+                    logger.warn("Already connected to MCP server: $serverUrl")
+                    return MCPConnectionStatus(
+                        connected = true,
+                        serverUrl = serverUrl
+                    )
+                }
+
                 logger.info("Attempting to connect to MCP server: $serverUrl")
 
                 // Создаем нового клиента
@@ -57,8 +74,7 @@ class MCPService {
                 }
 
                 // Сохраняем клиент и URL
-                mcpClient = client
-                currentServerUrl = serverUrl
+                mcpClients[serverUrl] = MCPConnection(client, serverUrl, httpClient)
 
                 logger.info("Successfully connected to MCP server: $serverUrl")
                 MCPConnectionStatus(
@@ -77,49 +93,49 @@ class MCPService {
     }
 
     /**
-     * Получение списка доступных инструментов
+     * Получение списка доступных инструментов со всех подключенных серверов
      */
     suspend fun listTools(): MCPToolsResponse {
         return connectionMutex.withLock {
-            val client = mcpClient
-
-            if (client == null) {
-                logger.warn("Attempted to list tools without active connection")
+            if (mcpClients.isEmpty()) {
+                logger.warn("Attempted to list tools without active connections")
                 return MCPToolsResponse(
                     tools = emptyList(),
                     totalCount = 0,
-                    serverUrl = currentServerUrl,
+                    serverUrl = null,
                     connected = false
                 )
             }
 
             try {
-                logger.info("Fetching tools list from MCP server")
-                val toolsList = client.listTools()
+                logger.info("Fetching tools list from ${mcpClients.size} MCP server(s)")
+                val allTools = mutableListOf<MCPToolInfo>()
 
-                if (toolsList == null) {
-                    logger.warn("listTools() returned null")
-                    return MCPToolsResponse(
-                        tools = emptyList(),
-                        totalCount = 0,
-                        serverUrl = currentServerUrl,
-                        connected = true
-                    )
+                // Получаем инструменты со всех подключенных серверов
+                mcpClients.forEach { (serverUrl, connection) ->
+                    try {
+                        val toolsList = connection.client.listTools()
+
+                        toolsList?.tools?.forEach { tool ->
+                            allTools.add(
+                                MCPToolInfo(
+                                    name = tool.name,
+                                    description = "${tool.description} (от $serverUrl)",
+                                    inputSchema = tool.inputSchema?.let { convertSchemaToMap(it) },
+                                    serverUrl = serverUrl
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        logger.error("Failed to list tools from $serverUrl: ${e.message}", e)
+                    }
                 }
 
-                val mcpTools = toolsList.tools.map { tool ->
-                    MCPToolInfo(
-                        name = tool.name,
-                        description = tool.description,
-                        inputSchema = tool.inputSchema?.let { convertSchemaToMap(it) }
-                    )
-                }
-
-                logger.info("Successfully retrieved ${mcpTools.size} tools from MCP server")
+                logger.info("Successfully retrieved ${allTools.size} tools from ${mcpClients.size} MCP server(s)")
                 MCPToolsResponse(
-                    tools = mcpTools,
-                    totalCount = mcpTools.size,
-                    serverUrl = currentServerUrl,
+                    tools = allTools,
+                    totalCount = allTools.size,
+                    serverUrl = null, // Multiple servers
                     connected = true
                 )
             } catch (e: Exception) {
@@ -127,7 +143,7 @@ class MCPService {
                 MCPToolsResponse(
                     tools = emptyList(),
                     totalCount = 0,
-                    serverUrl = currentServerUrl,
+                    serverUrl = null,
                     connected = true
                 )
             }
@@ -136,39 +152,62 @@ class MCPService {
 
     /**
      * Вызов инструмента MCP
+     * Автоматически определяет на каком сервере находится инструмент
      */
     suspend fun callTool(toolName: String, arguments: Map<String, String>): MCPCallToolResponse {
         return connectionMutex.withLock {
-            val client = mcpClient
-
-            if (client == null) {
-                logger.warn("Attempted to call tool without active connection")
+            if (mcpClients.isEmpty()) {
+                logger.warn("Attempted to call tool without active connections")
                 return MCPCallToolResponse(
                     result = "",
                     toolName = toolName,
                     success = false,
-                    error = "Not connected to MCP server"
+                    error = "Not connected to any MCP server"
                 )
             }
 
             try {
                 logger.info("Calling MCP tool: $toolName with arguments: $arguments")
-                val result = client.callTool(
-                    name = toolName,
-                    arguments = arguments
-                )
 
-                // Извлекаем текстовое содержимое из результата
-                val resultText = result?.content
-                    ?.filterIsInstance<io.modelcontextprotocol.kotlin.sdk.TextContent>()
-                    ?.joinToString("\n") { it.text ?: "" }
-                    ?: ""
+                // Ищем сервер с этим инструментом
+                for ((serverUrl, connection) in mcpClients) {
+                    try {
+                        val toolsList = connection.client.listTools()
+                        val hasTool = toolsList?.tools?.any { it.name == toolName } ?: false
 
-                logger.info("Successfully called tool: $toolName")
+                        if (hasTool) {
+                            logger.info("Found tool $toolName on server: $serverUrl")
+                            val result = connection.client.callTool(
+                                name = toolName,
+                                arguments = arguments
+                            )
+
+                            // Извлекаем текстовое содержимое из результата
+                            val resultText = result?.content
+                                ?.filterIsInstance<io.modelcontextprotocol.kotlin.sdk.TextContent>()
+                                ?.joinToString("\n") { it.text ?: "" }
+                                ?: ""
+
+                            logger.info("Successfully called tool: $toolName on $serverUrl")
+                            return MCPCallToolResponse(
+                                result = resultText,
+                                toolName = toolName,
+                                success = true
+                            )
+                        }
+                    } catch (e: Exception) {
+                        logger.warn("Error checking tools on $serverUrl: ${e.message}")
+                        continue
+                    }
+                }
+
+                // Инструмент не найден ни на одном сервере
+                logger.warn("Tool $toolName not found on any connected server")
                 MCPCallToolResponse(
-                    result = resultText,
+                    result = "",
                     toolName = toolName,
-                    success = true
+                    success = false,
+                    error = "Tool $toolName not found on any connected MCP server"
                 )
             } catch (e: Exception) {
                 logger.error("Failed to call tool $toolName: ${e.message}", e)
@@ -187,19 +226,74 @@ class MCPService {
      */
     fun getConnectionStatus(): MCPConnectionStatus {
         return MCPConnectionStatus(
-            connected = mcpClient != null,
-            serverUrl = currentServerUrl
+            connected = mcpClients.isNotEmpty(),
+            serverUrl = if (mcpClients.size == 1) mcpClients.keys.first() else "${mcpClients.size} servers"
         )
     }
 
     /**
-     * Отключение от MCP сервера
+     * Получение списка всех подключенных серверов
      */
-    suspend fun disconnect() {
+    suspend fun getConnectedServers(): MCPServersListResponse {
+        return connectionMutex.withLock {
+            val servers = mcpClients.map { (serverUrl, connection) ->
+                try {
+                    val toolsList = connection.client.listTools()
+                    MCPServerInfo(
+                        serverUrl = serverUrl,
+                        connected = true,
+                        toolsCount = toolsList?.tools?.size ?: 0
+                    )
+                } catch (e: Exception) {
+                    MCPServerInfo(
+                        serverUrl = serverUrl,
+                        connected = false,
+                        toolsCount = 0
+                    )
+                }
+            }
+
+            MCPServersListResponse(
+                servers = servers,
+                totalCount = servers.size
+            )
+        }
+    }
+
+    /**
+     * Отключение от конкретного MCP сервера
+     */
+    suspend fun disconnect(serverUrl: String) {
         connectionMutex.withLock {
-            mcpClient = null
-            currentServerUrl = null
-            logger.info("Disconnected from MCP server")
+            val connection = mcpClients.remove(serverUrl)
+            if (connection != null) {
+                try {
+                    connection.httpClient.close()
+                    logger.info("Disconnected from MCP server: $serverUrl")
+                } catch (e: Exception) {
+                    logger.error("Error closing connection to $serverUrl: ${e.message}", e)
+                }
+            } else {
+                logger.warn("Attempted to disconnect from non-existing server: $serverUrl")
+            }
+        }
+    }
+
+    /**
+     * Отключение от всех MCP серверов
+     */
+    suspend fun disconnectAll() {
+        connectionMutex.withLock {
+            mcpClients.forEach { (serverUrl, connection) ->
+                try {
+                    connection.httpClient.close()
+                    logger.info("Disconnected from MCP server: $serverUrl")
+                } catch (e: Exception) {
+                    logger.error("Error closing connection to $serverUrl: ${e.message}", e)
+                }
+            }
+            mcpClients.clear()
+            logger.info("Disconnected from all MCP servers")
         }
     }
 
