@@ -1,0 +1,742 @@
+openapi: 3.0.3
+info:
+  title: AI Chat Service API
+  description: REST API для взаимодействия с Claude AI и векторизации текста через Ollama
+  version: 1.0.0
+  contact:
+    name: Denis Skorobogatov
+    email: skorobogatov.dev@gmail.com
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+
+tags:
+  - name: Chat
+    description: Диалоги с Claude AI
+  - name: MCP
+    description: Model Context Protocol интеграция
+  - name: Tasks
+    description: Запланированные задачи
+  - name: Embeddings
+    description: Векторизация текста через Ollama
+
+paths:
+  /api/chat:
+    post:
+      tags:
+        - Chat
+      summary: Отправить сообщение Claude AI
+      description: Создает новый диалог или продолжает существующий. Поддерживает автоматическое сжатие истории и сохранение в файлы.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  description: Сообщение пользователя
+                  example: "Привет! Расскажи о Kotlin."
+                sessionId:
+                  type: string
+                  format: uuid
+                  description: ID сессии для продолжения диалога (опционально)
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                systemPrompt:
+                  type: string
+                  description: Переопределить системный промпт (опционально)
+                  example: "Отвечай кратко и по делу"
+                model:
+                  type: string
+                  description: Выбрать модель Claude (опционально)
+                  enum:
+                    - claude-3-haiku-20240307
+                    - claude-sonnet-4-20250514
+                  example: "claude-sonnet-4-20250514"
+      responses:
+        '200':
+          description: Успешный ответ от Claude
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    description: Ответ от Claude AI
+                  sessionId:
+                    type: string
+                    format: uuid
+                    description: ID сессии для продолжения диалога
+                  model:
+                    type: string
+                    description: Использованная модель
+                  inputTokens:
+                    type: integer
+                    description: Количество входных токенов
+                  outputTokens:
+                    type: integer
+                    description: Количество выходных токенов
+                  totalTokens:
+                    type: integer
+                    description: Общее количество токенов
+                  responseTimeMs:
+                    type: integer
+                    description: Время ответа в миллисекундах
+                  historyCompressed:
+                    type: boolean
+                    description: Была ли сжата история в этом запросе
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/embeddings:
+    post:
+      tags:
+        - Embeddings
+      summary: Получить embedding для текста
+      description: Векторизация одного текста через Ollama (модель nomic-embed-text)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Текст для векторизации
+                  example: "Это пример текста для векторизации"
+      responses:
+        '200':
+          description: Успешная векторизация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embedding:
+                    type: array
+                    items:
+                      type: number
+                    description: Вектор embeddings (768 размерность)
+                  model:
+                    type: string
+                    example: "nomic-embed-text"
+                  dimension:
+                    type: integer
+                    example: 768
+                  processingTimeMs:
+                    type: integer
+                    description: Время обработки в мс
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/embeddings/batch:
+    post:
+      tags:
+        - Embeddings
+      summary: Batch векторизация нескольких текстов
+      description: Векторизация списка текстов за один запрос
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - texts
+              properties:
+                texts:
+                  type: array
+                  items:
+                    type: string
+                  description: Список текстов для векторизации
+                  example: ["Первый текст", "Второй текст", "Третий текст"]
+      responses:
+        '200':
+          description: Успешная batch векторизация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embeddings:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: number
+                    description: Массив векторов
+                  model:
+                    type: string
+                  dimension:
+                    type: integer
+                  count:
+                    type: integer
+                    description: Количество векторизованных текстов
+                  processingTimeMs:
+                    type: integer
+
+  /api/embeddings/vectorize:
+    post:
+      tags:
+        - Embeddings
+      summary: Векторизация текста с автоматическим чанкованием
+      description: Разбивает большой текст на чанки, векторизует каждый и сохраняет результат
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Текст для векторизации
+                chunkSize:
+                  type: integer
+                  default: 750
+                  description: Размер чанка в токенах
+                overlap:
+                  type: integer
+                  default: 75
+                  description: Перекрытие чанков в токенах
+                saveToFile:
+                  type: boolean
+                  default: true
+                  description: Сохранить результат в JSON файл
+                outputFileName:
+                  type: string
+                  description: Имя выходного файла (опционально)
+      responses:
+        '200':
+          description: Успешная векторизация с чанкованием
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorizeResponse'
+
+  /api/embeddings/vectorize-file:
+    post:
+      tags:
+        - Embeddings
+      summary: Векторизация загруженного файла
+      description: Загружает текстовый файл, разбивает на чанки и векторизует
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Текстовый файл для векторизации
+                chunkSize:
+                  type: integer
+                  default: 750
+                overlap:
+                  type: integer
+                  default: 75
+                saveToFile:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          description: Успешная векторизация файла
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VectorizeResponse'
+
+  /api/embeddings/status:
+    get:
+      tags:
+        - Embeddings
+      summary: Проверить статус Ollama сервера
+      description: Проверяет доступность и готовность Ollama сервера
+      responses:
+        '200':
+          description: Ollama доступна
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  url:
+                    type: string
+                  model:
+                    type: string
+                  error:
+                    type: string
+                    nullable: true
+        '503':
+          description: Ollama недоступна
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    example: false
+                  url:
+                    type: string
+                  model:
+                    type: string
+                  error:
+                    type: string
+
+  /api/mcp/connect:
+    post:
+      tags:
+        - MCP
+      summary: Подключиться к MCP серверу
+      description: Устанавливает соединение с MCP сервером по WebSocket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - serverUrl
+              properties:
+                serverUrl:
+                  type: string
+                  format: uri
+                  example: "ws://localhost:3000/mcp"
+                transportType:
+                  type: string
+                  default: "websocket"
+                  example: "websocket"
+      responses:
+        '200':
+          description: Успешное подключение
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  serverUrl:
+                    type: string
+
+  /api/mcp/status:
+    get:
+      tags:
+        - MCP
+      summary: Статус подключения к MCP серверу
+      responses:
+        '200':
+          description: Статус подключения
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  serverUrl:
+                    type: string
+                    nullable: true
+
+  /api/mcp/tools:
+    get:
+      tags:
+        - MCP
+      summary: Получить список доступных MCP инструментов
+      responses:
+        '200':
+          description: Список инструментов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        inputSchema:
+                          type: object
+                  totalCount:
+                    type: integer
+                  serverUrl:
+                    type: string
+                  connected:
+                    type: boolean
+
+  /api/mcp/tools/call:
+    post:
+      tags:
+        - MCP
+      summary: Вызвать MCP инструмент
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - toolName
+                - arguments
+              properties:
+                toolName:
+                  type: string
+                  example: "get_weather"
+                arguments:
+                  type: object
+                  example:
+                    city: "Москва"
+      responses:
+        '200':
+          description: Результат выполнения инструмента
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                  toolName:
+                    type: string
+                  success:
+                    type: boolean
+
+  /api/tasks:
+    get:
+      tags:
+        - Tasks
+      summary: Получить список всех запланированных задач
+      responses:
+        '200':
+          description: Список задач
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScheduledTask'
+                  totalCount:
+                    type: integer
+    post:
+      tags:
+        - Tasks
+      summary: Создать запланированную задачу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - question
+                - schedule
+              properties:
+                name:
+                  type: string
+                  example: "Daily Weather Check"
+                description:
+                  type: string
+                  example: "Проверка погоды каждое утро"
+                question:
+                  type: string
+                  example: "Какая погода в Москве?"
+                sessionId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                schedule:
+                  type: object
+                  required:
+                    - type
+                  properties:
+                    type:
+                      type: string
+                      enum: [ONCE, DAILY, WEEKLY]
+                    startTime:
+                      type: string
+                      format: date-time
+                      description: Для типа ONCE
+                    hour:
+                      type: integer
+                      minimum: 0
+                      maximum: 23
+                      description: Для типов DAILY и WEEKLY
+                    minute:
+                      type: integer
+                      minimum: 0
+                      maximum: 59
+                      description: Для типов DAILY и WEEKLY
+                    dayOfWeek:
+                      type: integer
+                      minimum: 1
+                      maximum: 7
+                      description: Для типа WEEKLY (1=Пн, 7=Вс)
+      responses:
+        '200':
+          description: Задача создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledTask'
+
+  /api/tasks/{taskId}:
+    get:
+      tags:
+        - Tasks
+      summary: Получить задачу по ID
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о задаче
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledTask'
+        '404':
+          description: Задача не найдена
+    put:
+      tags:
+        - Tasks
+      summary: Обновить задачу
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                question:
+                  type: string
+                sessionId:
+                  type: string
+                  format: uuid
+                schedule:
+                  type: object
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Задача обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledTask'
+    delete:
+      tags:
+        - Tasks
+      summary: Удалить задачу
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Задача удалена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/tasks/{taskId}/executions:
+    get:
+      tags:
+        - Tasks
+      summary: Получить историю выполнений задачи
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: История выполнений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskExecution'
+                  totalCount:
+                    type: integer
+                  taskId:
+                    type: string
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+
+    VectorizeResponse:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            totalChunks:
+              type: integer
+            chunkSizeTokens:
+              type: integer
+            overlapTokens:
+              type: integer
+            totalTextTokens:
+              type: integer
+            model:
+              type: string
+            embeddingDimension:
+              type: integer
+            totalProcessingTimeMs:
+              type: integer
+            savedToFile:
+              type: string
+              nullable: true
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              chunkId:
+                type: integer
+              text:
+                type: string
+              startWord:
+                type: integer
+              endWord:
+                type: integer
+              estimatedTokens:
+                type: integer
+              wordCount:
+                type: integer
+              embedding:
+                type: array
+                items:
+                  type: number
+              dimension:
+                type: integer
+              processingTimeMs:
+                type: integer
+
+    ScheduledTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        question:
+          type: string
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        schedule:
+          type: object
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        nextExecutionAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TaskExecution:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        taskName:
+          type: string
+        question:
+          type: string
+        response:
+          type: string
+        sessionId:
+          type: string
+          format: uuid
+        success:
+          type: boolean
+        errorMessage:
+          type: string
+          nullable: true
+        executedAt:
+          type: string
+          format: date-time
+        executionTimeMs:
+          type: integer

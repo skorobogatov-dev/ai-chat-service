@@ -36,7 +36,7 @@ fun Application.module() {
     """.trimIndent()
     val systemPrompt = environment.config.propertyOrNull("claude.systemPrompt")?.getString() ?: defaultSystemPrompt
 
-    // Создание HTTP клиента для запросов к Anthropic API
+    // Создание HTTP клиента для запросов к Anthropic API и Ollama
     val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(Json {
@@ -48,6 +48,14 @@ fun Application.module() {
         install(Logging) {
             logger = Logger.DEFAULT
             level = LogLevel.INFO
+        }
+        // Увеличенные timeouts для Ollama (первый запрос может быть медленным)
+        engine {
+            requestTimeout = 120_000 // 2 минуты на весь запрос
+            endpoint {
+                connectTimeout = 30_000 // 30 секунд на подключение
+                socketTimeout = 120_000 // 2 минуты на чтение/запись
+            }
         }
     }
 
@@ -108,6 +116,7 @@ fun Application.module() {
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
+    configureOpenAPI()
     configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService)
 
     // Автоматическое подключение к MCP серверу, если URL задан
@@ -143,6 +152,17 @@ fun Application.module() {
         environment.log.info("Server running on: http://0.0.0.0:${environment.config.property("ktor.deployment.port").getString()}")
         environment.log.info("Using Claude model: $model")
         environment.log.info("Ollama service configured: $ollamaBaseUrl (model: $ollamaModel)")
+
+        // Прогрев Ollama модели (загрузка в память)
+        launch {
+            try {
+                environment.log.info("Warming up Ollama model...")
+                ollamaService.getEmbedding("test")
+                environment.log.info("Ollama model warmed up successfully")
+            } catch (e: Exception) {
+                environment.log.warn("Failed to warm up Ollama model: ${e.message}")
+            }
+        }
     }
 
     // Закрытие HTTP клиента при остановке приложения

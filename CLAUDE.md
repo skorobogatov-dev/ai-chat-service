@@ -132,6 +132,24 @@ curl -X POST http://localhost:8080/api/chat \
 - Ollama сервер (опционально) для векторизации на http://localhost:11434 (можно переопределить через OLLAMA_BASE_URL)
 - Модель Ollama по умолчанию: nomic-embed-text (можно переопределить через OLLAMA_MODEL)
 
+### API Documentation (Swagger UI)
+Проект включает полную OpenAPI документацию, доступную через Swagger UI:
+
+- **Swagger UI**: http://localhost:8080/swagger
+  - Интерактивная документация всех API endpoints
+  - Возможность тестировать запросы прямо из браузера
+  - Автоматическая валидация параметров
+
+- **OpenAPI Spec**: http://localhost:8080/openapi
+  - OpenAPI 3.0 спецификация в формате HTML
+  - Полное описание всех endpoints, моделей данных и параметров
+
+Документация включает все endpoints:
+- Chat API (диалоги с Claude AI)
+- Embeddings API (векторизация текста через Ollama)
+- MCP API (Model Context Protocol интеграция)
+- Tasks API (запланированные задачи)
+
 ### MCP Integration (автоматическое использование инструментов)
 Для автоматического подключения к MCP серверу при старте приложения:
 ```bash
