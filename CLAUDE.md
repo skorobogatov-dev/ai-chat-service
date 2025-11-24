@@ -129,6 +129,8 @@ curl -X POST http://localhost:8080/api/chat \
 - MCP Activities сервер запускается на порту 3001
 - По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 - JSON формат: `{"question": "...", "answer": "...", "tags": [...]}` - в ответе пользователю выводится только поле `answer`
+- Ollama сервер (опционально) для векторизации на http://localhost:11434 (можно переопределить через OLLAMA_BASE_URL)
+- Модель Ollama по умолчанию: nomic-embed-text (можно переопределить через OLLAMA_MODEL)
 
 ### MCP Integration (автоматическое использование инструментов)
 Для автоматического подключения к MCP серверу при старте приложения:
@@ -484,6 +486,93 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 # Ответ: {"message": "Disconnected from MCP server"}
 ```
 
+### Ollama Embeddings API
+
+Сервис поддерживает векторизацию текста через локальный Ollama сервер с моделью nomic-embed-text.
+
+#### Требования
+- Установленный Ollama сервер на http://localhost:11434
+- Загруженная модель nomic-embed-text:
+  ```bash
+  ollama pull nomic-embed-text
+  ```
+
+#### Конфигурация
+Настройки Ollama можно переопределить через environment переменные:
+```bash
+export OLLAMA_BASE_URL="http://localhost:11434"  # URL Ollama сервера
+export OLLAMA_MODEL="nomic-embed-text"           # Модель для векторизации
+./gradlew :server:run
+```
+
+#### Получение embedding для одного текста
+```bash
+curl -X POST http://localhost:8080/api/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Текст для векторизации"
+  }'
+# Ответ: {
+#   "embedding": [0.123, -0.456, 0.789, ...],
+#   "model": "nomic-embed-text",
+#   "dimension": 768,
+#   "processingTimeMs": 145
+# }
+```
+
+#### Получение embeddings для нескольких текстов (batch)
+```bash
+curl -X POST http://localhost:8080/api/embeddings/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "texts": [
+      "Первый текст",
+      "Второй текст",
+      "Третий текст"
+    ]
+  }'
+# Ответ: {
+#   "embeddings": [
+#     [0.123, -0.456, ...],
+#     [0.234, -0.567, ...],
+#     [0.345, -0.678, ...]
+#   ],
+#   "model": "nomic-embed-text",
+#   "dimension": 768,
+#   "count": 3,
+#   "processingTimeMs": 432
+# }
+```
+
+#### Проверка статуса Ollama сервера
+```bash
+curl http://localhost:8080/api/embeddings/status
+# Ответ (доступен): {
+#   "available": true,
+#   "url": "http://localhost:11434",
+#   "model": "nomic-embed-text"
+# }
+# Ответ (недоступен): {
+#   "available": false,
+#   "url": "http://localhost:11434",
+#   "model": "nomic-embed-text",
+#   "error": "Connection failed: Connection refused"
+# }
+```
+
+**Использование embeddings:**
+- Семантический поиск документов
+- Вычисление схожести текстов
+- Кластеризация документов
+- Рекомендательные системы
+- Классификация текстов
+
+**Особенности модели nomic-embed-text:**
+- Размерность вектора: 768
+- Максимальная длина текста: ~8192 токенов
+- Поддержка множества языков (включая русский)
+- Оптимизирована для семантического поиска
+
 ## Architecture Overview
 
 ### Request Flow
@@ -501,13 +590,14 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 ### Key Components
 
 **Application.kt** - Entry point, инициализирует:
-- HTTP Client (CIO engine) для запросов к Anthropic
+- HTTP Client (CIO engine) для запросов к Anthropic и Ollama
 - ClaudeService с конфигурацией из application.conf
 - FileStorageService (директория: `chat_sessions/`)
 - ConversationHistoryService (порог сжатия = 3 пары сообщений, автосохранение через FileStorageService)
 - TaskStorageService (директория: `scheduled_tasks/`)
 - SchedulerService (управление и выполнение запланированных задач)
 - MCPService для работы с Model Context Protocol
+- OllamaService для векторизации текста через локальный Ollama (nomic-embed-text)
 - Plugins (Serialization, CORS, StatusPages, Routing)
 
 **ClaudeService** - Инкапсулирует логику работы с Anthropic API:
@@ -572,11 +662,20 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - Thread-safe управление подключением через Mutex
 - Автоматическая конвертация схем инструментов для сериализации
 
+**OllamaService** - Сервис для векторизации текста:
+- Взаимодействие с локальным Ollama сервером через HTTP API
+- Получение embeddings для одиночных текстов (getEmbedding)
+- Батчевая обработка множественных текстов (getBatchEmbeddings)
+- Проверка доступности Ollama сервера (checkStatus)
+- Использование модели nomic-embed-text (768-мерные векторы)
+- Измерение времени обработки запросов
+- Обработка ошибок подключения и API
+
 **Plugins** - Модульная конфигурация Ktor:
 - Serialization: kotlinx.serialization для JSON
 - HTTP: CORS для кросс-доменных запросов
 - StatusPages: глобальная обработка исключений
-- Routing: регистрация всех routes (ChatRoutes, MCPRoutes, TaskRoutes)
+- Routing: регистрация всех routes (ChatRoutes, MCPRoutes, TaskRoutes, EmbeddingRoutes)
 
 ### Data Models
 - `ChatRequest/ChatResponse` - публичные API DTOs
@@ -611,6 +710,14 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
   - `UpdateTaskRequest` - запрос на обновление задачи (все поля опциональны)
   - `TaskListResponse` - ответ со списком задач
   - `TaskExecutionListResponse` - ответ со списком выполнений задачи
+- `OllamaModels.kt` - модели для векторизации текста через Ollama
+  - `OllamaEmbeddingRequest` - внутренний запрос к Ollama API (model, prompt)
+  - `OllamaEmbeddingResponse` - внутренний ответ от Ollama API (embedding)
+  - `EmbeddingRequest` - публичный API запрос для векторизации (text)
+  - `EmbeddingResponse` - публичный API ответ с вектором (embedding, model, dimension, processingTimeMs)
+  - `BatchEmbeddingRequest` - запрос для векторизации нескольких текстов (texts)
+  - `BatchEmbeddingResponse` - ответ с векторами для нескольких текстов (embeddings, model, dimension, count, processingTimeMs)
+  - `OllamaStatus` - статус подключения к Ollama (available, url, model, error)
 
 ### Design Decisions
 - **Stateful sessions** - hybrid хранилище (in-memory + персистентное) истории диалогов с автоматическим сжатием
@@ -620,10 +727,11 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - **Coroutine-based scheduler** - использование Kotlin coroutines для асинхронного выполнения запланированных задач без блокировки потоков
 - **Task persistence** - все задачи и выполнения сохраняются в JSON для восстановления после перезапуска
 - **Flexible scheduling** - поддержка одноразовых (ONCE), ежедневных (DAILY) и еженедельных (WEEKLY) задач
-- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности диалогов, TaskStorageService для персистентности задач, SchedulerService для планирования
+- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности диалогов, TaskStorageService для персистентности задач, SchedulerService для планирования, OllamaService для векторизации текста
 - **Configuration over code** - все настройки в application.conf
 - **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
 - **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям и задачам из разных потоков
+- **Local embeddings** - использование локального Ollama для векторизации без внешних API вызовов и с полным контролем над данными
 
 ## External Dependencies
 - **Anthropic Claude API** (requires API key)
@@ -632,3 +740,4 @@ curl -X POST http://localhost:8080/api/mcp/disconnect
 - **MCP Kotlin SDK 0.6.0** - Model Context Protocol официальная реализация от Anthropic & JetBrains
 - **kotlinx.serialization** - JSON сериализация для всех DTO
 - **Logback** - Логирование
+- **Ollama** (optional) - Локальный сервер для векторизации текста (nomic-embed-text модель)

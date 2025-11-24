@@ -42,7 +42,9 @@ bin/
 .env
 local.properties
 
+test_data/
 chat_sessions/
+embeddings_output/
 scheduled_tasks/
 *.log
 .kotlin/

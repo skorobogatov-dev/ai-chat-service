@@ -75,6 +75,21 @@ fun Application.module() {
     // Создание сервиса для работы с MCP (Model Context Protocol)
     val mcpService = dev.skorobogatov.services.MCPService()
 
+    // Создание сервиса для работы с Ollama (векторизация текста)
+    val ollamaBaseUrl = environment.config.propertyOrNull("ollama.baseUrl")?.getString() ?: "http://localhost:11434"
+    val ollamaModel = environment.config.propertyOrNull("ollama.model")?.getString() ?: "nomic-embed-text"
+    val ollamaService = dev.skorobogatov.services.OllamaService(
+        httpClient = httpClient,
+        baseUrl = ollamaBaseUrl,
+        model = ollamaModel
+    )
+
+    // Создание сервиса для разбиения текста на чанки
+    val chunkerService = dev.skorobogatov.services.TextChunkerService(
+        defaultChunkSize = 750,
+        defaultOverlap = 75
+    )
+
     // Создание сервиса для хранения задач
     val taskStorageService = dev.skorobogatov.services.TaskStorageService(
         storageDirectory = "scheduled_tasks"
@@ -93,7 +108,7 @@ fun Application.module() {
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
-    configureRouting(claudeService, historyService, mcpService, schedulerService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService)
 
     // Автоматическое подключение к MCP серверу, если URL задан
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -127,6 +142,7 @@ fun Application.module() {
         environment.log.info("Application started successfully")
         environment.log.info("Server running on: http://0.0.0.0:${environment.config.property("ktor.deployment.port").getString()}")
         environment.log.info("Using Claude model: $model")
+        environment.log.info("Ollama service configured: $ollamaBaseUrl (model: $ollamaModel)")
     }
 
     // Закрытие HTTP клиента при остановке приложения
