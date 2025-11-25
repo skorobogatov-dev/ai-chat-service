@@ -98,6 +98,11 @@ fun Application.module() {
         defaultOverlap = 75
     )
 
+    // Создание сервиса для векторного хранилища (RAG)
+    val vectorStoreService = dev.skorobogatov.services.VectorStoreService(
+        storageDirectory = "embeddings_output"
+    )
+
     // Создание сервиса для хранения задач
     val taskStorageService = dev.skorobogatov.services.TaskStorageService(
         storageDirectory = "scheduled_tasks"
@@ -117,7 +122,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService)
 
     // Автоматическое подключение к MCP серверу, если URL задан
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -152,6 +157,7 @@ fun Application.module() {
         environment.log.info("Server running on: http://0.0.0.0:${environment.config.property("ktor.deployment.port").getString()}")
         environment.log.info("Using Claude model: $model")
         environment.log.info("Ollama service configured: $ollamaBaseUrl (model: $ollamaModel)")
+        environment.log.info("RAG system initialized: ${vectorStoreService.getDocumentsCount()} documents, ${vectorStoreService.getTotalChunksCount()} chunks")
 
         // Прогрев Ollama модели (загрузка в память)
         launch {

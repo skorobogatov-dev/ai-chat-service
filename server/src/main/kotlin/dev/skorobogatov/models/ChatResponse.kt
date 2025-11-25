@@ -11,5 +11,8 @@ data class ChatResponse(
     val outputTokens: Int,
     val totalTokens: Int,
     val responseTimeMs: Long,
-    val historyCompressed: Boolean = false  // Была ли сжата история в этом запросе
+    val historyCompressed: Boolean = false,  // Была ли сжата история в этом запросе
+    val ragUsed: Boolean = false,  // Был ли использован RAG
+    val ragChunksFound: Int = 0,  // Количество найденных чанков для RAG
+    val ragSources: List<String> = emptyList()  // Источники для RAG (имена файлов)
 )

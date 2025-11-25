@@ -591,6 +591,169 @@ curl http://localhost:8080/api/embeddings/status
 - Поддержка множества языков (включая русский)
 - Оптимизирована для семантического поиска
 
+### RAG (Retrieval-Augmented Generation) System
+
+Сервис поддерживает RAG для обогащения ответов Claude AI контекстом из векторизованных документов.
+
+#### Как работает RAG
+
+1. **Подготовка документов**:
+   - Загрузите текст или файл через `/api/embeddings/vectorize` или `/api/embeddings/vectorize-file`
+   - Текст автоматически разбивается на чанки с перекрытием
+   - Каждый чанк векторизуется через Ollama (nomic-embed-text)
+   - Результат сохраняется в `embeddings_output/` директорию
+
+2. **Использование в чате**:
+   - При отправке сообщения с `useRAG: true`, запрос векторизуется
+   - Система ищет наиболее похожие чанки из индекса (cosine similarity)
+   - Найденные чанки добавляются в системный промпт как контекст
+   - Claude AI использует этот контекст для формирования ответа
+
+#### Подготовка документов для RAG
+
+```bash
+# Векторизация текста
+curl -X POST http://localhost:8080/api/embeddings/vectorize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Ваш большой текст для векторизации...",
+    "chunkSize": 750,
+    "overlap": 75,
+    "saveToFile": true,
+    "outputFileName": "my_document.json"
+  }'
+
+# Векторизация файла
+curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
+  -F "file=@path/to/document.txt" \
+  -F "chunkSize=750" \
+  -F "overlap=75" \
+  -F "saveToFile=true"
+
+# Ответ: {
+#   "metadata": {
+#     "timestamp": "2025-11-25 18:00:00",
+#     "totalChunks": 15,
+#     "chunkSizeTokens": 750,
+#     "overlapTokens": 75,
+#     "totalTextTokens": 10500,
+#     "model": "nomic-embed-text",
+#     "embeddingDimension": 768,
+#     "totalProcessingTimeMs": 5432,
+#     "savedToFile": "/path/to/embeddings_output/my_document.json"
+#   },
+#   "chunks": [...]
+# }
+```
+
+#### Использование RAG в чате
+
+```bash
+# Запрос с RAG (автоматически находит релевантный контекст)
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Расскажи о главном герое книги",
+    "useRAG": true,
+    "ragTopK": 3,
+    "ragMinSimilarity": 0.5
+  }'
+
+# Ответ: {
+#   "response": "Главный герой книги...",
+#   "sessionId": "uuid",
+#   "model": "claude-sonnet-4-20250514",
+#   "ragUsed": true,
+#   "ragChunksFound": 3,
+#   "ragSources": ["book_embeddings.json"],
+#   ...
+# }
+```
+
+**Параметры RAG:**
+- `useRAG` (boolean, default: false) - включить RAG
+- `ragTopK` (int, default: 3) - количество похожих чанков для контекста
+- `ragMinSimilarity` (double, default: 0.5) - минимальное значение сходства (0.0 - 1.0)
+
+#### Управление RAG индексом
+
+```bash
+# Статус RAG системы
+curl http://localhost:8080/api/embeddings/rag/status
+# Ответ: {
+#   "enabled": true,
+#   "documentsCount": 5,
+#   "chunksCount": 75,
+#   "storageDirectory": "embeddings_output",
+#   "ollamaAvailable": true,
+#   "documents": [
+#     {
+#       "fileName": "book_embeddings.json",
+#       "chunksCount": 15,
+#       "timestamp": "2025-11-25 18:00:00"
+#     }
+#   ]
+# }
+
+# Перезагрузить индекс (загрузить все документы из embeddings_output)
+curl -X POST http://localhost:8080/api/embeddings/rag/reload
+
+# Поиск по индексу (без использования Claude AI)
+curl -X POST http://localhost:8080/api/embeddings/rag/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "главный герой",
+    "topK": 5,
+    "minSimilarity": 0.5
+  }'
+# Ответ: {
+#   "query": "главный герой",
+#   "totalFound": 5,
+#   "results": [
+#     {
+#       "fileName": "book_embeddings.json",
+#       "chunkId": 3,
+#       "text": "...",
+#       "similarity": 0.87,
+#       "wordCount": 150,
+#       "estimatedTokens": 200
+#     }
+#   ]
+# }
+
+# Удалить документ из индекса
+curl -X DELETE http://localhost:8080/api/embeddings/rag/documents/book_embeddings.json
+```
+
+#### Пример работы RAG
+
+```bash
+# 1. Подготовить документ (векторизовать книгу)
+curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
+  -F "file=@war_and_peace.txt"
+
+# 2. Задать вопрос с использованием RAG
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Кто такой Пьер Безухов и какова его роль в романе?",
+    "useRAG": true,
+    "ragTopK": 5,
+    "ragMinSimilarity": 0.6
+  }'
+
+# Claude AI получит контекст:
+# - 5 наиболее релевантных чанков из книги
+# - Сформирует ответ на основе найденного контекста
+# - Укажет источники в ответе
+```
+
+**Преимущества RAG:**
+- Актуальная информация: используйте собственные документы как источник знаний
+- Точность: ответы основаны на конкретных документах, а не на общих знаниях модели
+- Прозрачность: видно, какие документы использовались для ответа
+- Масштабируемость: легко добавлять новые документы без переобучения модели
+
 ## Architecture Overview
 
 ### Request Flow

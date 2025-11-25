@@ -4,6 +4,8 @@ import dev.skorobogatov.models.*
 import dev.skorobogatov.services.ClaudeService
 import dev.skorobogatov.services.ConversationHistoryService
 import dev.skorobogatov.services.MCPService
+import dev.skorobogatov.services.VectorStoreService
+import dev.skorobogatov.services.OllamaService
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -28,7 +30,9 @@ internal fun convertMcpSchemaToJson(inputSchema: JsonObject?): JsonObject {
 fun Route.chatRoutes(
     claudeService: ClaudeService,
     historyService: ConversationHistoryService,
-    mcpService: MCPService
+    mcpService: MCPService,
+    vectorStoreService: VectorStoreService? = null,
+    ollamaService: OllamaService? = null
 ) {
     route("/api/chat") {
         post {
@@ -52,6 +56,63 @@ fun Route.chatRoutes(
 
                 // Добавить сообщение пользователя в историю
                 historyService.addUserMessage(session.sessionId, request.message)
+
+                // RAG: поиск похожих документов
+                var ragUsed = false
+                var ragChunksFound = 0
+                val ragSources = mutableListOf<String>()
+                var enrichedSystemPrompt = request.systemPrompt
+
+                if (request.useRAG && vectorStoreService != null && ollamaService != null) {
+                    try {
+                        logger.info("RAG enabled: searching for relevant context (topK=${request.ragTopK}, minSimilarity=${request.ragMinSimilarity})")
+
+                        // Векторизуем запрос пользователя
+                        val queryEmbedding = ollamaService.getEmbedding(request.message)
+                        logger.debug("Query vectorized: dimension=${queryEmbedding.dimension}")
+
+                        // Ищем похожие чанки
+                        val similarChunks = vectorStoreService.searchSimilarChunks(
+                            queryEmbedding = queryEmbedding.embedding,
+                            topK = request.ragTopK,
+                            minSimilarity = request.ragMinSimilarity
+                        )
+
+                        if (similarChunks.isNotEmpty()) {
+                            ragUsed = true
+                            ragChunksFound = similarChunks.size
+                            ragSources.addAll(similarChunks.map { it.fileName }.distinct())
+
+                            // Формируем контекст из найденных чанков
+                            val contextText = buildString {
+                                appendLine("RELEVANT CONTEXT FROM KNOWLEDGE BASE:")
+                                appendLine()
+                                similarChunks.forEachIndexed { index, result ->
+                                    appendLine("--- Context ${index + 1} (similarity: ${"%.4f".format(result.similarity)}, source: ${result.fileName}) ---")
+                                    appendLine(result.chunkInfo.text)
+                                    appendLine()
+                                }
+                                appendLine("--- END OF CONTEXT ---")
+                                appendLine()
+                                appendLine("Use the above context to answer the user's question. If the context is relevant, reference it in your answer.")
+                            }
+
+                            // Добавляем контекст к системному промпту
+                            enrichedSystemPrompt = if (request.systemPrompt != null) {
+                                "$contextText\n\n${request.systemPrompt}"
+                            } else {
+                                contextText
+                            }
+
+                            logger.info("RAG context added: ${ragChunksFound} chunks from ${ragSources.size} documents")
+                        } else {
+                            logger.info("RAG: no relevant context found")
+                        }
+                    } catch (e: Exception) {
+                        logger.error("RAG search failed: ${e.message}", e)
+                        // Продолжаем без RAG в случае ошибки
+                    }
+                }
 
                 // Проверить, нужно ли сжать историю
                 var historyCompressed = false
@@ -104,7 +165,7 @@ fun Route.chatRoutes(
                         claudeService.sendMessageWithTools(
                             messages = allMessages,
                             tools = claudeTools,
-                            systemPrompt = request.systemPrompt,
+                            systemPrompt = enrichedSystemPrompt,
                             requestModel = request.model,
                             onToolCall = { toolName, input ->
                                 logger.info("Executing MCP tool: $toolName")
@@ -125,11 +186,11 @@ fun Route.chatRoutes(
                         )
                     } else {
                         logger.debug("MCP server connected but no tools available, using standard mode")
-                        claudeService.sendMessage(allMessages, request.systemPrompt, request.model)
+                        claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
                     }
                 } else {
                     logger.debug("MCP server not connected, using standard mode")
-                    claudeService.sendMessage(allMessages, request.systemPrompt, request.model)
+                    claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
                 }
 
                 // Добавить ответ ассистента в историю
@@ -146,10 +207,13 @@ fun Route.chatRoutes(
                     }
                 }
 
-                // Создать ответ с sessionId
+                // Создать ответ с sessionId и RAG информацией
                 val response = apiResponse.copy(
                     sessionId = session.sessionId,
-                    historyCompressed = historyCompressed
+                    historyCompressed = historyCompressed,
+                    ragUsed = ragUsed,
+                    ragChunksFound = ragChunksFound,
+                    ragSources = ragSources
                 )
 
                 call.respond(HttpStatusCode.OK, response)

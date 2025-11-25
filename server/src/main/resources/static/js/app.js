@@ -6,6 +6,7 @@ class ChatApp {
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
         this.modelSelect = document.getElementById('modelSelect');
+        this.ragCheckbox = document.getElementById('ragCheckbox');
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
@@ -363,6 +364,12 @@ class ChatApp {
         // Send sessionId if we have one
         if (this.sessionId) {
             requestBody.sessionId = this.sessionId;
+        }
+        // Send RAG setting
+        if (this.ragCheckbox && this.ragCheckbox.checked) {
+            requestBody.useRAG = true;
+            requestBody.ragTopK = 3;
+            requestBody.ragMinSimilarity = 0.5;
         }
 
         const response = await fetch('/api/chat', {

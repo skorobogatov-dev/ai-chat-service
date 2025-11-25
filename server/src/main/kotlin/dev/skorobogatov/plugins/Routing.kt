@@ -19,12 +19,13 @@ fun Application.configureRouting(
     mcpService: MCPService,
     schedulerService: SchedulerService,
     ollamaService: OllamaService,
-    chunkerService: dev.skorobogatov.services.TextChunkerService
+    chunkerService: dev.skorobogatov.services.TextChunkerService,
+    vectorStoreService: dev.skorobogatov.services.VectorStoreService
 ) {
     routing {
-        chatRoutes(claudeService, historyService, mcpService)
+        chatRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService)
         mcpRoutes(mcpService)
         taskRoutes(schedulerService)
-        embeddingRoutes(ollamaService, chunkerService)
+        embeddingRoutes(ollamaService, chunkerService, vectorStoreService)
     }
 }
