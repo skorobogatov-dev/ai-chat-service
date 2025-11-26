@@ -363,6 +363,100 @@ class ClaudeService(
     }
 
     /**
+     * Reranking документов с помощью Claude AI
+     * Оценивает релевантность каждого документа к запросу и возвращает отсортированный список
+     *
+     * @param query Запрос пользователя
+     * @param chunks Список чанков для reranking
+     * @return Список чанков с обновленными scores (от 0.0 до 1.0)
+     */
+    suspend fun rerankDocuments(
+        query: String,
+        chunks: List<dev.skorobogatov.services.SearchResultWithMetadata>
+    ): List<Pair<dev.skorobogatov.services.SearchResultWithMetadata, Double>> {
+        logger.debug("Reranking ${chunks.size} documents for query")
+
+        if (chunks.isEmpty()) {
+            return emptyList()
+        }
+
+        // Формируем промпт для reranking
+        val rerankPrompt = buildString {
+            appendLine("You are a relevance scoring expert. Your task is to evaluate how relevant each document is to the user's query.")
+            appendLine()
+            appendLine("Query: $query")
+            appendLine()
+            appendLine("Documents to evaluate:")
+            chunks.forEachIndexed { index, result ->
+                appendLine()
+                appendLine("Document ${index + 1}:")
+                appendLine(result.chunkInfo.text.take(500)) // Ограничиваем длину для экономии токенов
+                if (result.chunkInfo.text.length > 500) {
+                    appendLine("...")
+                }
+            }
+            appendLine()
+            appendLine("For each document, provide a relevance score from 0.0 (not relevant) to 1.0 (highly relevant).")
+            appendLine("Return ONLY a JSON array with scores in the same order as documents, like this: [0.8, 0.3, 0.9]")
+        }
+
+        val rerankRequest = ClaudeApiRequest(
+            model = model,
+            max_tokens = 200,
+            messages = listOf(ClaudeMessageRequest(
+                role = "user",
+                content = listOf(ClaudeContentRequest(type = "text", text = rerankPrompt))
+            )),
+            system = "You are a relevance scoring expert. Return only a JSON array of numbers."
+        )
+
+        return try {
+            val response: HttpResponse = httpClient.post(apiUrl) {
+                header("x-api-key", apiKey)
+                header("anthropic-version", "2023-06-01")
+                contentType(ContentType.Application.Json)
+                setBody(rerankRequest)
+            }
+
+            when (response.status) {
+                HttpStatusCode.OK -> {
+                    val apiResponse: ClaudeApiResponse = response.body()
+                    val responseText = apiResponse.content.firstOrNull()?.text
+                        ?: throw Exception("No content in rerank response")
+
+                    logger.debug("Rerank response: $responseText")
+
+                    // Парсим JSON массив scores
+                    val cleanedResponse = cleanMarkdownCodeFences(responseText.trim())
+                    val scoresJson = json.decodeFromString<List<Double>>(cleanedResponse)
+
+                    if (scoresJson.size != chunks.size) {
+                        logger.warn("Rerank scores count (${scoresJson.size}) doesn't match chunks count (${chunks.size}), falling back to original similarity")
+                        return chunks.map { it to it.similarity }
+                    }
+
+                    // Объединяем чанки с новыми scores
+                    val rerankedResults = chunks.zip(scoresJson)
+                        .sortedByDescending { it.second }
+
+                    logger.info("Successfully reranked ${chunks.size} documents")
+                    rerankedResults
+                }
+                else -> {
+                    val errorBody = response.bodyAsText()
+                    logger.error("Failed to rerank documents: ${response.status} - $errorBody")
+                    // Возвращаем оригинальные результаты при ошибке
+                    chunks.map { it to it.similarity }
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error reranking documents: ${e.message}", e)
+            // Возвращаем оригинальные результаты при ошибке
+            chunks.map { it to it.similarity }
+        }
+    }
+
+    /**
      * Создать название диалога на основе первого сообщения пользователя
      */
     suspend fun generateConversationTitle(firstMessage: String): String {

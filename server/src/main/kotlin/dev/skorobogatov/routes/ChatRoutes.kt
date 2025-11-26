@@ -62,21 +62,55 @@ fun Route.chatRoutes(
                 var ragChunksFound = 0
                 val ragSources = mutableListOf<String>()
                 var enrichedSystemPrompt = request.systemPrompt
+                var rerankingUsed = false
+                var rerankingTimeMs = 0L
 
                 if (request.useRAG && vectorStoreService != null && ollamaService != null) {
                     try {
-                        logger.info("RAG enabled: searching for relevant context (topK=${request.ragTopK}, minSimilarity=${request.ragMinSimilarity})")
+                        logger.info("RAG enabled: searching for relevant context (topK=${request.ragTopK}, minSimilarity=${request.ragMinSimilarity}, reranking=${request.useReranking})")
 
                         // Векторизуем запрос пользователя
                         val queryEmbedding = ollamaService.getEmbedding(request.message)
                         logger.debug("Query vectorized: dimension=${queryEmbedding.dimension}")
 
                         // Ищем похожие чанки
-                        val similarChunks = vectorStoreService.searchSimilarChunks(
+                        // Если используем reranking, берем больше кандидатов (topK * 2), чтобы было из чего выбирать
+                        val initialTopK = if (request.useReranking) request.ragTopK * 2 else request.ragTopK
+                        var similarChunks = vectorStoreService.searchSimilarChunks(
                             queryEmbedding = queryEmbedding.embedding,
-                            topK = request.ragTopK,
+                            topK = initialTopK,
                             minSimilarity = request.ragMinSimilarity
                         )
+
+                        // Reranking: переранжируем результаты с помощью Claude AI
+                        if (request.useReranking && similarChunks.isNotEmpty()) {
+                            try {
+                                logger.info("Reranking enabled: reranking ${similarChunks.size} candidates")
+                                val rerankStartTime = System.currentTimeMillis()
+
+                                val rerankedResults = claudeService.rerankDocuments(
+                                    query = request.message,
+                                    chunks = similarChunks
+                                )
+
+                                rerankingTimeMs = System.currentTimeMillis() - rerankStartTime
+                                rerankingUsed = true
+
+                                // Берем топ-K после reranking
+                                similarChunks = rerankedResults
+                                    .take(request.ragTopK)
+                                    .map { (chunk, score) ->
+                                        // Обновляем similarity score на reranking score
+                                        chunk.copy(similarity = score)
+                                    }
+
+                                logger.info("Reranking completed in ${rerankingTimeMs}ms, selected top ${similarChunks.size} chunks")
+                            } catch (e: Exception) {
+                                logger.error("Reranking failed: ${e.message}, falling back to original ranking", e)
+                                // При ошибке используем оригинальные результаты (топ-K без reranking)
+                                similarChunks = similarChunks.take(request.ragTopK)
+                            }
+                        }
 
                         if (similarChunks.isNotEmpty()) {
                             ragUsed = true
@@ -88,7 +122,8 @@ fun Route.chatRoutes(
                                 appendLine("RELEVANT CONTEXT FROM KNOWLEDGE BASE:")
                                 appendLine()
                                 similarChunks.forEachIndexed { index, result ->
-                                    appendLine("--- Context ${index + 1} (similarity: ${"%.4f".format(result.similarity)}, source: ${result.fileName}) ---")
+                                    val scoreLabel = if (rerankingUsed) "relevance" else "similarity"
+                                    appendLine("--- Context ${index + 1} ($scoreLabel: ${"%.4f".format(result.similarity)}, source: ${result.fileName}) ---")
                                     appendLine(result.chunkInfo.text)
                                     appendLine()
                                 }
@@ -207,13 +242,15 @@ fun Route.chatRoutes(
                     }
                 }
 
-                // Создать ответ с sessionId и RAG информацией
+                // Создать ответ с sessionId, RAG и reranking информацией
                 val response = apiResponse.copy(
                     sessionId = session.sessionId,
                     historyCompressed = historyCompressed,
                     ragUsed = ragUsed,
                     ragChunksFound = ragChunksFound,
-                    ragSources = ragSources
+                    ragSources = ragSources,
+                    rerankingUsed = rerankingUsed,
+                    rerankingTimeMs = rerankingTimeMs
                 )
 
                 call.respond(HttpStatusCode.OK, response)

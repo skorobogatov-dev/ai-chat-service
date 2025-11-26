@@ -7,6 +7,7 @@ class ChatApp {
         this.sendButton = document.getElementById('sendButton');
         this.modelSelect = document.getElementById('modelSelect');
         this.ragCheckbox = document.getElementById('ragCheckbox');
+        this.rerankingCheckbox = document.getElementById('rerankingCheckbox');
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
@@ -32,6 +33,17 @@ class ChatApp {
                 this.closeModal();
             }
         });
+
+        // Enable/disable reranking checkbox based on RAG checkbox
+        this.ragCheckbox.addEventListener('change', () => {
+            this.rerankingCheckbox.disabled = !this.ragCheckbox.checked;
+            if (!this.ragCheckbox.checked) {
+                this.rerankingCheckbox.checked = false;
+            }
+        });
+
+        // Initially disable reranking checkbox
+        this.rerankingCheckbox.disabled = true;
 
         // Load conversations list
         await this.loadConversations();
@@ -326,7 +338,12 @@ class ChatApp {
                 outputTokens: response.outputTokens,
                 totalTokens: response.totalTokens,
                 responseTimeMs: response.responseTimeMs,
-                historyCompressed: response.historyCompressed
+                historyCompressed: response.historyCompressed,
+                ragUsed: response.ragUsed,
+                ragChunksFound: response.ragChunksFound,
+                ragSources: response.ragSources,
+                rerankingUsed: response.rerankingUsed,
+                rerankingTimeMs: response.rerankingTimeMs
             });
 
             // Update message count (user message + assistant response)
@@ -370,6 +387,11 @@ class ChatApp {
             requestBody.useRAG = true;
             requestBody.ragTopK = 3;
             requestBody.ragMinSimilarity = 0.5;
+
+            // Send Reranking setting (only if RAG is enabled)
+            if (this.rerankingCheckbox && this.rerankingCheckbox.checked) {
+                requestBody.useReranking = true;
+            }
         }
 
         const response = await fetch('/api/chat', {
@@ -463,6 +485,29 @@ class ChatApp {
                     <span class="stats-value">${(stats.responseTimeMs / 1000).toFixed(2)}с</span>
                 </div>
             `;
+
+            // Add RAG indicator if RAG was used
+            if (stats.ragUsed) {
+                const sources = stats.ragSources && stats.ragSources.length > 0
+                    ? stats.ragSources.join(', ')
+                    : 'N/A';
+                statsHtml += `
+                    <div class="stats-item rag">
+                        <span class="stats-label">🔍 RAG:</span>
+                        <span class="stats-value">${stats.ragChunksFound} чанков</span>
+                    </div>
+                `;
+            }
+
+            // Add Reranking indicator if reranking was used
+            if (stats.rerankingUsed) {
+                statsHtml += `
+                    <div class="stats-item reranking">
+                        <span class="stats-label">🎯 Reranking:</span>
+                        <span class="stats-value">${(stats.rerankingTimeMs / 1000).toFixed(2)}с</span>
+                    </div>
+                `;
+            }
 
             // Add compression indicator if history was compressed
             if (stats.historyCompressed) {
