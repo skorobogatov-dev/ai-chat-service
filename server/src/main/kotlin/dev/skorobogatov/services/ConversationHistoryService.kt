@@ -76,10 +76,10 @@ class ConversationHistoryService(
     /**
      * Добавить ответ ассистента
      */
-    fun addAssistantMessage(sessionId: String, message: String, fromScheduledTask: Boolean = false) {
+    fun addAssistantMessage(sessionId: String, message: String, fromScheduledTask: Boolean = false, ragChunks: List<dev.skorobogatov.models.RAGChunkReference>? = null) {
         val session = sessions[sessionId] ?: throw IllegalArgumentException("Session not found: $sessionId")
-        session.addMessage(MessageType.ASSISTANT, message, fromScheduledTask)
-        logger.debug("Added assistant message to session $sessionId (fromScheduledTask=$fromScheduledTask)")
+        session.addMessage(MessageType.ASSISTANT, message, fromScheduledTask, ragChunks)
+        logger.debug("Added assistant message to session $sessionId (fromScheduledTask=$fromScheduledTask, ragChunks=${ragChunks?.size ?: 0})")
         saveSession(session)
     }
 

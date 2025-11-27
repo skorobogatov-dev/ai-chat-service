@@ -17,5 +17,6 @@ data class HistoryMessageDto(
     val type: String,
     val content: String,
     val timestamp: Long,
-    val fromScheduledTask: Boolean = false
+    val fromScheduledTask: Boolean = false,
+    val ragChunks: List<RAGChunkReference>? = null
 )

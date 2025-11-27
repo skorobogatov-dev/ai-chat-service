@@ -21,7 +21,8 @@ data class HistoryMessage(
     val type: MessageType,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val fromScheduledTask: Boolean = false  // Флаг для сообщений от запланированных задач
+    val fromScheduledTask: Boolean = false,  // Флаг для сообщений от запланированных задач
+    val ragChunks: List<RAGChunkReference>? = null  // RAG чанки для ответов ассистента
 )
 
 /**
@@ -39,8 +40,8 @@ data class ConversationHistory(
     /**
      * Добавить сообщение в историю
      */
-    fun addMessage(type: MessageType, content: String, fromScheduledTask: Boolean = false) {
-        messages.add(HistoryMessage(type, content, fromScheduledTask = fromScheduledTask))
+    fun addMessage(type: MessageType, content: String, fromScheduledTask: Boolean = false, ragChunks: List<RAGChunkReference>? = null) {
+        messages.add(HistoryMessage(type, content, fromScheduledTask = fromScheduledTask, ragChunks = ragChunks))
         lastAccessedAt = System.currentTimeMillis()
     }
 

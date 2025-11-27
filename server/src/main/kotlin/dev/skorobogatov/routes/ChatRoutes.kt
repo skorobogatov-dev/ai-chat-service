@@ -61,6 +61,7 @@ fun Route.chatRoutes(
                 var ragUsed = false
                 var ragChunksFound = 0
                 val ragSources = mutableListOf<String>()
+                val ragChunks = mutableListOf<RAGChunkReference>()
                 var enrichedSystemPrompt = request.systemPrompt
                 var rerankingUsed = false
                 var rerankingTimeMs = 0L
@@ -116,6 +117,20 @@ fun Route.chatRoutes(
                             ragUsed = true
                             ragChunksFound = similarChunks.size
                             ragSources.addAll(similarChunks.map { it.fileName }.distinct())
+
+                            // Сохраняем информацию о найденных чанках для возврата в ответе
+                            ragChunks.addAll(similarChunks.map { result ->
+                                RAGChunkReference(
+                                    fileName = result.fileName,
+                                    chunkId = result.chunkInfo.chunkId,
+                                    text = result.chunkInfo.text,
+                                    similarity = result.similarity,
+                                    wordCount = result.chunkInfo.wordCount,
+                                    startWord = result.chunkInfo.startWord,
+                                    endWord = result.chunkInfo.endWord,
+                                    estimatedTokens = result.chunkInfo.estimatedTokens
+                                )
+                            })
 
                             // Формируем контекст из найденных чанков
                             val contextText = buildString {
@@ -228,8 +243,12 @@ fun Route.chatRoutes(
                     claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
                 }
 
-                // Добавить ответ ассистента в историю
-                historyService.addAssistantMessage(session.sessionId, apiResponse.response)
+                // Добавить ответ ассистента в историю (с RAG чанками если они есть)
+                historyService.addAssistantMessage(
+                    session.sessionId,
+                    apiResponse.response,
+                    ragChunks = if (ragChunks.isNotEmpty()) ragChunks else null
+                )
 
                 // Сгенерировать название для нового диалога
                 if (isNewSession && session.title == null) {
@@ -249,6 +268,7 @@ fun Route.chatRoutes(
                     ragUsed = ragUsed,
                     ragChunksFound = ragChunksFound,
                     ragSources = ragSources,
+                    ragChunks = ragChunks,
                     rerankingUsed = rerankingUsed,
                     rerankingTimeMs = rerankingTimeMs
                 )
@@ -285,7 +305,8 @@ fun Route.chatRoutes(
                     type = msg.type.name,
                     content = msg.content,
                     timestamp = msg.timestamp,
-                    fromScheduledTask = msg.fromScheduledTask
+                    fromScheduledTask = msg.fromScheduledTask,
+                    ragChunks = msg.ragChunks
                 )
             }
 
