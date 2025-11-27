@@ -1355,3 +1355,200 @@ footer code {
 .execution-item .error {
     color: #c53030;
 }
+
+/* ===================================
+   RAG Chunks Styles
+   =================================== */
+
+.rag-chunks-container {
+    margin-top: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    border: 2px solid rgba(102, 126, 234, 0.2);
+    border-radius: 12px;
+    clear: both;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.rag-chunks-header {
+    font-size: 15px;
+    font-weight: 700;
+    color: #667eea;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+}
+
+.rag-chunk-item {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+    transition: all 0.2s;
+}
+
+.rag-chunk-item:last-child {
+    margin-bottom: 0;
+}
+
+.rag-chunk-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    transform: translateX(4px);
+}
+
+.rag-chunk-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rag-chunk-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.rag-chunk-badge {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.rag-chunk-similarity {
+    font-size: 12px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.rag-chunk-text {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 10px;
+    border-left: 4px solid #667eea;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.rag-chunk-meta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: #666;
+}
+
+.rag-chunk-meta span {
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+/* Mobile responsive for RAG chunks */
+@media (max-width: 600px) {
+    .rag-chunks-container {
+        padding: 12px;
+    }
+
+    .rag-chunk-item {
+        padding: 10px;
+    }
+
+    .rag-chunk-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .rag-chunk-text {
+        font-size: 12px;
+        padding: 10px;
+    }
+
+    .rag-chunk-meta {
+        font-size: 10px;
+        gap: 6px;
+    }
+}
+
+/* View RAG Sources Button Container */
+.rag-view-button-container {
+    margin-top: 12px;
+    padding: 8px 0;
+    display: flex;
+    justify-content: center;
+}
+
+/* View RAG Sources Button */
+.view-rag-sources-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.view-rag-sources-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+    background: linear-gradient(135deg, #5568d3 0%, #653a8a 100%);
+}
+
+.view-rag-sources-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}
+
+/* RAG Modal Content */
+.rag-modal-content {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.rag-modal-content .rag-chunk-item {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 16px;
+    transition: all 0.2s;
+}
+
+.rag-modal-content .rag-chunk-item:last-child {
+    margin-bottom: 0;
+}
+
+.rag-modal-content .rag-chunk-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}

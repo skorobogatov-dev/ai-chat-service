@@ -11,6 +11,8 @@ class ChatApp {
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
+        this.ragModal = document.getElementById('ragModal');
+        this.closeRagModalButton = document.getElementById('closeRagModalButton');
         this.newChatButton = document.getElementById('newChatButton');
         this.conversationsList = document.getElementById('conversationsList');
         this.chatTitle = document.getElementById('chatTitle');
@@ -27,10 +29,26 @@ class ChatApp {
         this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
         this.viewHistoryButton.addEventListener('click', () => this.viewHistory());
         this.closeModalButton.addEventListener('click', () => this.closeModal());
+        this.closeRagModalButton.addEventListener('click', () => this.closeRagModal());
         this.newChatButton.addEventListener('click', () => this.createNewConversation());
         this.historyModal.addEventListener('click', (e) => {
             if (e.target === this.historyModal) {
                 this.closeModal();
+            }
+        });
+        this.ragModal.addEventListener('click', (e) => {
+            if (e.target === this.ragModal) {
+                this.closeRagModal();
+            }
+        });
+
+        // Event delegation for view RAG sources buttons
+        this.messagesContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('view-rag-sources-btn')) {
+                const messageDiv = e.target.closest('.message');
+                if (messageDiv && messageDiv.dataset.ragChunks) {
+                    this.openRagModal(JSON.parse(messageDiv.dataset.ragChunks));
+                }
             }
         });
 
@@ -178,7 +196,14 @@ class ChatApp {
             // Display all messages
             historyData.messages.forEach(msg => {
                 const type = msg.type === 'USER' ? 'user' : 'assistant';
-                this.addMessage(msg.content, type, null, null, false, msg.fromScheduledTask || false, msg.timestamp);
+                // Если есть RAG чанки, передаем их в stats
+                const stats = msg.ragChunks && msg.ragChunks.length > 0 ? {
+                    ragUsed: true,
+                    ragChunks: msg.ragChunks,
+                    ragChunksFound: msg.ragChunks.length,
+                    ragSources: [...new Set(msg.ragChunks.map(c => c.fileName))]
+                } : null;
+                this.addMessage(msg.content, type, null, stats, false, msg.fromScheduledTask || false, msg.timestamp);
             });
 
             // Update message count for auto-refresh
@@ -256,7 +281,14 @@ class ChatApp {
                 const newMessages = historyData.messages.slice(this.currentMessageCount);
                 newMessages.forEach(msg => {
                     const type = msg.type === 'USER' ? 'user' : 'assistant';
-                    this.addMessage(msg.content, type, null, null, false, msg.fromScheduledTask || false, msg.timestamp);
+                    // Если есть RAG чанки, передаем их в stats
+                    const stats = msg.ragChunks && msg.ragChunks.length > 0 ? {
+                        ragUsed: true,
+                        ragChunks: msg.ragChunks,
+                        ragChunksFound: msg.ragChunks.length,
+                        ragSources: [...new Set(msg.ragChunks.map(c => c.fileName))]
+                    } : null;
+                    this.addMessage(msg.content, type, null, stats, false, msg.fromScheduledTask || false, msg.timestamp);
                 });
 
                 // Update message count
@@ -342,6 +374,7 @@ class ChatApp {
                 ragUsed: response.ragUsed,
                 ragChunksFound: response.ragChunksFound,
                 ragSources: response.ragSources,
+                ragChunks: response.ragChunks,
                 rerankingUsed: response.rerankingUsed,
                 rerankingTimeMs: response.rerankingTimeMs
             });
@@ -459,7 +492,9 @@ class ChatApp {
             timestampInfo = ` <span class="message-timestamp">${formattedTime}</span>`;
         }
 
-        contentDiv.innerHTML = `<strong>${label}:${modelInfo}${timestampInfo}</strong> ${this.escapeHtml(text)}`;
+        // Use formatText for assistant messages to support markdown-like formatting
+        const formattedText = (type === 'assistant' || type === 'error') ? this.formatText(text) : this.escapeHtml(text);
+        contentDiv.innerHTML = `<strong>${label}:${modelInfo}${timestampInfo}</strong> ${formattedText}`;
 
         messageDiv.appendChild(contentDiv);
 
@@ -494,7 +529,7 @@ class ChatApp {
                 statsHtml += `
                     <div class="stats-item rag">
                         <span class="stats-label">🔍 RAG:</span>
-                        <span class="stats-value">${stats.ragChunksFound} чанков</span>
+                        <span class="stats-value">${stats.ragChunksFound} чанков из ${stats.ragSources ? stats.ragSources.length : 0} источников</span>
                     </div>
                 `;
             }
@@ -520,6 +555,20 @@ class ChatApp {
 
             statsDiv.innerHTML = statsHtml;
             messageDiv.appendChild(statsDiv);
+
+            // Add view RAG sources button if ragChunks available
+            if (stats.ragChunks && stats.ragChunks.length > 0) {
+                messageDiv.dataset.ragChunks = JSON.stringify(stats.ragChunks);
+
+                const ragButtonDiv = document.createElement('div');
+                ragButtonDiv.className = 'rag-view-button-container';
+                ragButtonDiv.innerHTML = `
+                    <button class="view-rag-sources-btn" title="Просмотреть источники и цитаты">
+                        📖 Просмотреть источники (${stats.ragChunks.length})
+                    </button>
+                `;
+                messageDiv.appendChild(ragButtonDiv);
+            }
         }
 
         this.messagesContainer.appendChild(messageDiv);
@@ -548,6 +597,25 @@ class ChatApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    formatText(text) {
+        // Escape HTML first
+        let formatted = this.escapeHtml(text);
+
+        // Convert line breaks to <br>
+        formatted = formatted.replace(/\n/g, '<br>');
+
+        // Convert **bold** to <strong>
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+        // Convert *italic* to <em>
+        formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+        // Convert `code` to <code>
+        formatted = formatted.replace(/`(.+?)`/g, '<code>$1</code>');
+
+        return formatted;
     }
 
     showLoadingIndicator() {
@@ -683,6 +751,52 @@ class ChatApp {
 
     closeModal() {
         this.historyModal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+
+    openRagModal(ragChunks) {
+        const ragChunksContent = document.getElementById('ragChunksContent');
+
+        // Clear previous content
+        ragChunksContent.innerHTML = '';
+
+        // Create chunk items
+        ragChunks.forEach((chunk, index) => {
+            const chunkItem = document.createElement('div');
+            chunkItem.className = 'rag-chunk-item';
+
+            const similarityPercent = (chunk.similarity * 100).toFixed(1);
+
+            chunkItem.innerHTML = `
+                <div class="rag-chunk-header">
+                    <span class="rag-chunk-title">
+                        📄 ${this.escapeHtml(chunk.fileName)}
+                        <span class="rag-chunk-badge">Чанк #${chunk.chunkId}</span>
+                    </span>
+                    <span class="rag-chunk-similarity">
+                        ${similarityPercent}% релевантность
+                    </span>
+                </div>
+                <div class="rag-chunk-text">
+                    ${this.escapeHtml(chunk.text)}
+                </div>
+                <div class="rag-chunk-meta">
+                    <span>📊 Слов: ${chunk.wordCount}</span>
+                    <span>📍 Позиция: ${chunk.startWord}-${chunk.endWord}</span>
+                    <span>🔤 Токенов: ~${chunk.estimatedTokens}</span>
+                </div>
+            `;
+
+            ragChunksContent.appendChild(chunkItem);
+        });
+
+        // Show modal
+        this.ragModal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    closeRagModal() {
+        this.ragModal.style.display = 'none';
         document.body.style.overflow = 'auto';
     }
 }
