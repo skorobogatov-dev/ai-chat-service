@@ -32,7 +32,8 @@ fun Route.chatRoutes(
     historyService: ConversationHistoryService,
     mcpService: MCPService,
     vectorStoreService: VectorStoreService? = null,
-    ollamaService: OllamaService? = null
+    ollamaService: OllamaService? = null,
+    commandHandler: dev.skorobogatov.services.CommandHandler? = null
 ) {
     route("/api/chat") {
         post {
@@ -47,6 +48,50 @@ fun Route.chatRoutes(
                 logger.info("Received chat request with message length: ${request.message.length}")
                 if (request.model != null) {
                     logger.info("Using custom model: ${request.model}")
+                }
+
+                // Проверка на команды
+                if (commandHandler != null && commandHandler.isCommand(request.message)) {
+                    logger.info("Processing command: ${request.message.take(20)}...")
+
+                    val commandResult = commandHandler.handleCommand(request.message)
+
+                    // Получаем или создаем сессию для команды
+                    val session = historyService.getOrCreateSession(request.sessionId)
+                    val isNewSession = request.sessionId == null
+
+                    // Добавляем команду в историю как сообщение пользователя
+                    historyService.addUserMessage(session.sessionId, request.message)
+
+                    // Добавляем результат команды в историю как ответ ассистента
+                    historyService.addAssistantMessage(session.sessionId, commandResult.message)
+
+                    // Генерируем название для нового диалога
+                    if (isNewSession) {
+                        val title = claudeService.generateConversationTitle(request.message)
+                        historyService.setConversationTitle(session.sessionId, title)
+                    }
+
+                    // Возвращаем ответ
+                    val response = ChatResponse(
+                        response = commandResult.message,
+                        sessionId = session.sessionId,
+                        model = "command-handler",
+                        inputTokens = 0,
+                        outputTokens = 0,
+                        totalTokens = 0,
+                        responseTimeMs = 0,
+                        historyCompressed = false,
+                        ragUsed = false,
+                        ragChunksFound = 0,
+                        ragSources = emptyList(),
+                        ragChunks = emptyList(),
+                        rerankingUsed = false,
+                        rerankingTimeMs = 0
+                    )
+
+                    call.respond(HttpStatusCode.OK, response)
+                    return@post
                 }
 
                 // Получить или создать сессию

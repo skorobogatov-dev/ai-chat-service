@@ -116,16 +116,24 @@ fun Application.module() {
         mcpService = mcpService
     )
 
+    // Создание обработчика команд
+    val commandHandler = dev.skorobogatov.services.CommandHandler(
+        mcpService = mcpService,
+        claudeService = claudeService
+    )
+
     // Конфигурация плагинов
     configureSerialization()
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler)
 
-    // Автоматическое подключение к MCP серверу, если URL задан
+    // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
+    val mcpFilesystemUrl = environment.config.propertyOrNull("mcp.filesystemServerUrl")?.getString() ?: "ws://localhost:3002/mcp"
+
     if (!mcpServerUrl.isNullOrBlank()) {
         val transportType = environment.config.propertyOrNull("mcp.transportType")?.getString() ?: "websocket"
         environment.log.info("MCP server URL configured: $mcpServerUrl (transport: $transportType)")
@@ -136,19 +144,43 @@ fun Application.module() {
                 environment.log.info("Connecting to MCP server: $mcpServerUrl")
                 val status = mcpService.connect(mcpServerUrl, transportType)
                 if (status.connected) {
-                    environment.log.info("Successfully connected to MCP server")
+                    environment.log.info("Successfully connected to MCP server: $mcpServerUrl")
                     // Получить список доступных инструментов
                     val tools = mcpService.listTools()
                     environment.log.info("Available MCP tools: ${tools.tools.joinToString(", ") { it.name }}")
                 } else {
-                    environment.log.warn("Failed to connect to MCP server: ${status.error}")
+                    environment.log.warn("Failed to connect to MCP server $mcpServerUrl: ${status.error}")
                 }
             } catch (e: Exception) {
-                environment.log.error("Error connecting to MCP server: ${e.message}", e)
+                environment.log.error("Error connecting to MCP server $mcpServerUrl: ${e.message}", e)
             }
         }
     } else {
-        environment.log.info("MCP server URL not configured. MCP integration disabled. Set MCP_SERVER_URL environment variable to enable.")
+        environment.log.info("MCP server URL not configured. Set MCP_SERVER_URL environment variable to enable.")
+    }
+
+    // Автоматическое подключение к MCP Filesystem Server
+    environment.log.info("MCP Filesystem server URL configured: $mcpFilesystemUrl")
+    launch {
+        try {
+            // Даем время серверу запуститься, если он запускается одновременно
+            kotlinx.coroutines.delay(2000)
+
+            environment.log.info("Connecting to MCP Filesystem server: $mcpFilesystemUrl")
+            val status = mcpService.connect(mcpFilesystemUrl, "websocket")
+            if (status.connected) {
+                environment.log.info("Successfully connected to MCP Filesystem server")
+                // Получить список доступных инструментов
+                val tools = mcpService.listTools()
+                environment.log.info("Available MCP tools: ${tools.tools.joinToString(", ") { it.name }}")
+            } else {
+                environment.log.warn("Failed to connect to MCP Filesystem server: ${status.error}")
+                environment.log.info("Make sure to start the filesystem MCP server: ./gradlew :mcp-filesystem-server:run")
+            }
+        } catch (e: Exception) {
+            environment.log.error("Error connecting to MCP Filesystem server: ${e.message}", e)
+            environment.log.info("Make sure to start the filesystem MCP server: ./gradlew :mcp-filesystem-server:run")
+        }
     }
 
     // Логирование при старте
@@ -167,6 +199,105 @@ fun Application.module() {
                 environment.log.info("Ollama model warmed up successfully")
             } catch (e: Exception) {
                 environment.log.warn("Failed to warm up Ollama model: ${e.message}")
+            }
+        }
+
+        // Автовекторизация документов из папки docs/
+        launch {
+            try {
+                environment.log.info("Starting auto-vectorization of docs/ directory...")
+                val docsDir = java.io.File("docs")
+                if (!docsDir.exists()) {
+                    environment.log.warn("docs/ directory does not exist, skipping auto-vectorization")
+                    return@launch
+                }
+
+                val mdFiles = docsDir.listFiles { file -> file.extension == "md" }
+                if (mdFiles.isNullOrEmpty()) {
+                    environment.log.warn("No .md files found in docs/ directory")
+                    return@launch
+                }
+
+                environment.log.info("Found ${mdFiles.size} .md files in docs/ directory")
+                var successCount = 0
+                var skipCount = 0
+
+                for (file in mdFiles) {
+                    try {
+                        val outputFileName = "${file.nameWithoutExtension}_embeddings.json"
+                        val outputFile = java.io.File("embeddings_output/$outputFileName")
+
+                        // Пропустить, если embeddings уже существуют
+                        if (outputFile.exists()) {
+                            environment.log.info("Skipping ${file.name} - embeddings already exist")
+                            skipCount++
+                            continue
+                        }
+
+                        environment.log.info("Vectorizing ${file.name}...")
+                        val startTime = System.currentTimeMillis()
+                        val text = file.readText()
+
+                        // Разбить текст на чанки
+                        val chunks = chunkerService.chunkText(text, 750, 75)
+                        environment.log.info("Split ${file.name} into ${chunks.size} chunks")
+
+                        // Векторизовать чанки
+                        val chunkTexts = chunks.map { it.text }
+                        val embeddingsResponse = ollamaService.getBatchEmbeddings(chunkTexts)
+                        val embeddings = embeddingsResponse.embeddings
+
+                        // Создать документ для векторного хранилища
+                        val vectorizedChunks = chunks.mapIndexed { index, chunk ->
+                            dev.skorobogatov.models.VectorizedChunkInfo(
+                                chunkId = chunk.chunkId,
+                                text = chunk.text,
+                                startWord = chunk.startWord,
+                                endWord = chunk.endWord,
+                                estimatedTokens = chunk.estimatedTokens,
+                                wordCount = chunk.wordCount,
+                                embedding = embeddings[index],
+                                dimension = embeddings[index].size,
+                                processingTimeMs = 0
+                            )
+                        }
+
+                        val totalTime = System.currentTimeMillis() - startTime
+                        val document = dev.skorobogatov.models.VectorizeTextResponse(
+                            metadata = dev.skorobogatov.models.VectorizationMetadata(
+                                timestamp = java.time.LocalDateTime.now().toString(),
+                                totalChunks = chunks.size,
+                                chunkSizeTokens = 750,
+                                overlapTokens = 75,
+                                totalTextTokens = chunkerService.estimateTokens(text),
+                                model = ollamaModel,
+                                embeddingDimension = embeddingsResponse.dimension,
+                                totalProcessingTimeMs = totalTime,
+                                savedToFile = outputFile.absolutePath
+                            ),
+                            chunks = vectorizedChunks
+                        )
+
+                        // Сохранить в файл
+                        outputFile.parentFile?.mkdirs()
+                        outputFile.writeText(kotlinx.serialization.json.Json { prettyPrint = true }.encodeToString(dev.skorobogatov.models.VectorizeTextResponse.serializer(), document))
+                        environment.log.info("Successfully vectorized and saved ${file.name}")
+                        successCount++
+                    } catch (e: Exception) {
+                        environment.log.error("Failed to vectorize ${file.name}: ${e.message}", e)
+                    }
+                }
+
+                environment.log.info("Auto-vectorization completed: $successCount vectorized, $skipCount skipped, ${mdFiles.size - successCount - skipCount} failed")
+
+                // Перезагрузить индекс, если были новые векторизованные документы
+                if (successCount > 0) {
+                    vectorStoreService.reloadIndex()
+                }
+
+                environment.log.info("RAG system updated: ${vectorStoreService.getDocumentsCount()} documents, ${vectorStoreService.getTotalChunksCount()} chunks")
+            } catch (e: Exception) {
+                environment.log.error("Error during auto-vectorization: ${e.message}", e)
             }
         }
     }
