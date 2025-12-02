@@ -6,13 +6,9 @@ class ChatApp {
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
         this.modelSelect = document.getElementById('modelSelect');
-        this.ragCheckbox = document.getElementById('ragCheckbox');
-        this.rerankingCheckbox = document.getElementById('rerankingCheckbox');
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
-        this.ragModal = document.getElementById('ragModal');
-        this.closeRagModalButton = document.getElementById('closeRagModalButton');
         this.newChatButton = document.getElementById('newChatButton');
         this.conversationsList = document.getElementById('conversationsList');
         this.chatTitle = document.getElementById('chatTitle');
@@ -20,7 +16,6 @@ class ChatApp {
         this.sessionId = null; // Current session ID
         this.conversations = []; // List of all conversations
         this.pollingInterval = null; // Interval for polling conversations
-        this.currentMessageCount = 0; // Track message count for current conversation
 
         this.init();
     }
@@ -82,11 +77,6 @@ class ChatApp {
         // Poll every 3 seconds
         this.pollingInterval = setInterval(async () => {
             await this.loadConversations();
-
-            // If viewing a conversation, check for new messages
-            if (this.sessionId) {
-                await this.refreshCurrentConversation();
-            }
         }, 3000);
     }
 
@@ -196,18 +186,8 @@ class ChatApp {
             // Display all messages
             historyData.messages.forEach(msg => {
                 const type = msg.type === 'USER' ? 'user' : 'assistant';
-                // Если есть RAG чанки, передаем их в stats
-                const stats = msg.ragChunks && msg.ragChunks.length > 0 ? {
-                    ragUsed: true,
-                    ragChunks: msg.ragChunks,
-                    ragChunksFound: msg.ragChunks.length,
-                    ragSources: [...new Set(msg.ragChunks.map(c => c.fileName))]
-                } : null;
-                this.addMessage(msg.content, type, null, stats, false, msg.fromScheduledTask || false, msg.timestamp);
+                this.addMessage(msg.content, type, null, null, false);
             });
-
-            // Update message count for auto-refresh
-            this.currentMessageCount = historyData.messages.length;
 
             // Mark all messages as read
             try {
@@ -244,18 +224,9 @@ class ChatApp {
                 throw new Error('Failed to delete conversation');
             }
 
-            // If we deleted the current conversation, clear it
+            // If we deleted the current conversation, start a new one
             if (sessionId === this.sessionId) {
-                this.sessionId = null;
-                this.chatTitle.textContent = 'AI Chat Assistant';
-                this.messagesContainer.innerHTML = `
-                    <div class="message assistant">
-                        <div class="message-content">
-                            <strong>Assistant:</strong> Привет! Я готов помочь вам. Задайте любой вопрос.
-                        </div>
-                    </div>
-                `;
-                this.updateHistoryButton();
+                this.createNewConversation();
             }
 
             // Reload conversations list
@@ -266,45 +237,10 @@ class ChatApp {
         }
     }
 
-    async refreshCurrentConversation() {
-        try {
-            const response = await fetch(`/api/chat/history/${this.sessionId}`);
-            if (!response.ok) {
-                return; // Silently fail if history can't be loaded
-            }
-
-            const historyData = await response.json();
-
-            // Check if there are new messages
-            if (historyData.messages.length > this.currentMessageCount) {
-                // Add only new messages
-                const newMessages = historyData.messages.slice(this.currentMessageCount);
-                newMessages.forEach(msg => {
-                    const type = msg.type === 'USER' ? 'user' : 'assistant';
-                    // Если есть RAG чанки, передаем их в stats
-                    const stats = msg.ragChunks && msg.ragChunks.length > 0 ? {
-                        ragUsed: true,
-                        ragChunks: msg.ragChunks,
-                        ragChunksFound: msg.ragChunks.length,
-                        ragSources: [...new Set(msg.ragChunks.map(c => c.fileName))]
-                    } : null;
-                    this.addMessage(msg.content, type, null, stats, false, msg.fromScheduledTask || false, msg.timestamp);
-                });
-
-                // Update message count
-                this.currentMessageCount = historyData.messages.length;
-            }
-        } catch (error) {
-            // Silently fail - don't interrupt user experience
-            console.error('Error refreshing conversation:', error);
-        }
-    }
-
     createNewConversation() {
         // Clear session ID to start new conversation
         this.sessionId = null;
         this.chatTitle.textContent = 'AI Chat Assistant';
-        this.currentMessageCount = 0;
 
         // Clear messages
         this.messagesContainer.innerHTML = `
@@ -342,6 +278,12 @@ class ChatApp {
         const message = this.messageInput.value.trim();
         if (!message) return;
 
+        // Check for special commands
+        if (message.startsWith('/')) {
+            await this.handleCommand(message);
+            return;
+        }
+
         // Disable input while processing
         this.setInputState(false);
 
@@ -370,17 +312,8 @@ class ChatApp {
                 outputTokens: response.outputTokens,
                 totalTokens: response.totalTokens,
                 responseTimeMs: response.responseTimeMs,
-                historyCompressed: response.historyCompressed,
-                ragUsed: response.ragUsed,
-                ragChunksFound: response.ragChunksFound,
-                ragSources: response.ragSources,
-                ragChunks: response.ragChunks,
-                rerankingUsed: response.rerankingUsed,
-                rerankingTimeMs: response.rerankingTimeMs
+                historyCompressed: response.historyCompressed
             });
-
-            // Update message count (user message + assistant response)
-            this.currentMessageCount += 2;
 
             // Reload conversations list to update it
             await this.loadConversations();
@@ -406,7 +339,276 @@ class ChatApp {
         }
     }
 
-    async sendMessage(message, model) {
+    async handleCommand(commandText) {
+        const parts = commandText.split(' ');
+        const command = parts[0].toLowerCase();
+        const args = parts.slice(1);
+
+        // Add command message to chat
+        this.addMessage(commandText, 'user');
+
+        // Clear input
+        this.messageInput.value = '';
+
+        switch (command) {
+            case '/review':
+                await this.handleReviewCommand(args);
+                break;
+            case '/help':
+                this.showHelpMessage();
+                break;
+            default:
+                this.addMessage(
+                    `Неизвестная команда: ${command}. Используйте /help для списка команд.`,
+                    'error'
+                );
+                this.setInputState(true);
+                this.messageInput.focus();
+        }
+    }
+
+    async handleReviewCommand(args) {
+        // Disable input while processing
+        this.setInputState(false);
+
+        // Show loading indicator
+        this.showLoadingIndicator();
+
+        try {
+            const target = args.length > 0 ? args.join(' ') : null;
+
+            // First, get list of changed files to check if we need to split
+            const statusCheck = await this.sendMessage(
+                'Используй get_git_status() и верни ТОЛЬКО список измененных файлов, по одному на строку, без дополнительного текста.',
+                this.modelSelect.value,
+                'Ты - помощник. Вызови get_git_status() и верни только пути к файлам, по одному на строку. Никакого другого текста.'
+            );
+
+            // Parse files from response
+            const changedFiles = statusCheck.response
+                .split('\n')
+                .filter(line => line.trim().length > 0 && !line.includes(':') && !line.includes('Статус'))
+                .map(line => line.trim().replace(/^[📝📄➕➖❓🔄]\s*/, '').trim())
+                .filter(file => file.endsWith('.kt') || file.endsWith('.js') || file.endsWith('.md'));
+
+            // If more than 3 files, do file-by-file analysis
+            if (changedFiles.length > 3) {
+                await this.handleMultiFileReview(changedFiles);
+                return;
+            }
+
+            // Otherwise, do regular review
+            let reviewMessage;
+            if (target) {
+                // Review specific branch or commit
+                reviewMessage = `Сделай детальный code review для ${target}. Используй git инструменты для получения информации об изменениях. Проанализируй код на наличие:
+- Потенциальных багов и ошибок
+- Security уязвимостей (SQL injection, XSS, CSRF и т.д.)
+- Performance issues
+- Code smells и anti-patterns
+- Нарушений best practices
+Дай конкретные рекомендации по улучшению.`;
+            } else {
+                // Review current changes
+                reviewMessage = `Сделай code review текущих изменений:
+
+1. Используй get_git_status() - узнай какие файлы изменены
+2. Используй get_git_diff() - получи детали изменений
+3. Проанализируй на: баги, security, performance, best practices
+4. Дай структурированный отчет
+
+Отвечай в формате из системного промпта.`;
+            }
+
+            // Send review request with special system prompt
+            const systemPrompt = `Ты code reviewer. Используй MCP инструменты get_git_status и get_git_diff для анализа.
+
+Формат ответа (СТРОГО следуй структуре):
+
+## 📊 Code Review
+
+### 📁 Файлы
+[список из git status]
+
+### ✅ Хорошо
+[3-5 пунктов]
+
+### ⚠️ Проблемы
+[конкретные проблемы с номерами строк]
+
+### 💡 Рекомендации
+[конкретные советы]
+
+ВАЖНО:
+- НЕ копируй код из diff, только анализируй
+- Указывай конкретные файлы и строки
+- Будь кратким и конкретным`;
+
+            const response = await this.sendMessage(reviewMessage, this.modelSelect.value, systemPrompt);
+
+            // Hide loading indicator
+            this.hideLoadingIndicator();
+
+            // Add review result to chat
+            this.addMessage(response.response, 'assistant', response.model, {
+                inputTokens: response.inputTokens,
+                outputTokens: response.outputTokens,
+                totalTokens: response.totalTokens,
+                responseTimeMs: response.responseTimeMs,
+                historyCompressed: response.historyCompressed
+            });
+
+            // Reload conversations list
+            await this.loadConversations();
+
+            // Update title if it's a new conversation
+            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            }
+        } catch (error) {
+            // Hide loading indicator
+            this.hideLoadingIndicator();
+
+            console.error('Error:', error);
+
+            // Check if it's a rate limit error
+            let errorMessage = error.message || 'Не удалось получить ответ';
+            if (errorMessage.includes('rate_limit') || errorMessage.includes('429')) {
+                errorMessage = `⏱️ Rate Limit: Превышен лимит запросов к Claude API.
+
+Решения:
+• Подождите 1 минуту и попробуйте снова
+• Используйте модель Haiku (она быстрее и экономичнее)
+• Проверьте конкретный файл вместо всех изменений
+• Задайте более простой вопрос без /review
+
+Технические детали: ${error.message}`;
+            }
+
+            this.addMessage(
+                `Ошибка при выполнении code review:\n\n${errorMessage}`,
+                'error'
+            );
+        } finally {
+            // Re-enable input
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
+    }
+
+    async handleMultiFileReview(files) {
+        try {
+            this.hideLoadingIndicator();
+            this.addMessage(
+                `🔍 Обнаружено ${files.length} измененных файлов. Выполняю пофайловый анализ для избежания rate limit...`,
+                'assistant'
+            );
+            this.showLoadingIndicator();
+
+            const fileReviews = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                this.hideLoadingIndicator();
+                this.addMessage(`📄 Анализирую файл ${i + 1}/${files.length}: ${file}`, 'assistant');
+                this.showLoadingIndicator();
+
+                try {
+                    const reviewMessage = `Проанализируй изменения в файле ${file}:
+
+1. Используй get_git_diff(file="${file}") чтобы получить diff
+2. Проверь на: баги, security, performance
+3. Дай краткий отчет (3-5 пунктов)`;
+
+                    const systemPrompt = `Ты code reviewer. Используй get_git_diff для анализа конкретного файла.
+Формат:
+✅ Хорошо: [1-2 пункта]
+⚠️ Проблемы: [конкретные проблемы]
+💡 Рекомендации: [советы]
+Будь кратким!`;
+
+                    const response = await this.sendMessage(reviewMessage, this.modelSelect.value, systemPrompt);
+
+                    fileReviews.push({
+                        file: file,
+                        review: response.response
+                    });
+                } catch (error) {
+                    console.error(`Error reviewing ${file}:`, error);
+                    fileReviews.push({
+                        file: file,
+                        review: `❌ Ошибка: ${error.message}`
+                    });
+                }
+            }
+
+            // Aggregate results
+            this.hideLoadingIndicator();
+
+            const aggregatedReview = this.aggregateFileReviews(fileReviews);
+            this.addMessage(aggregatedReview, 'assistant', this.modelSelect.value);
+
+            // Reload conversations
+            await this.loadConversations();
+
+            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            }
+        } catch (error) {
+            this.hideLoadingIndicator();
+            console.error('Error in multi-file review:', error);
+            this.addMessage(
+                `Ошибка при пофайловом анализе: ${error.message}`,
+                'error'
+            );
+        } finally {
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
+    }
+
+    aggregateFileReviews(fileReviews) {
+        let result = '## 📊 Code Review (пофайловый анализ)\n\n';
+        result += `### 📁 Проанализировано файлов: ${fileReviews.length}\n\n`;
+
+        fileReviews.forEach((fr, idx) => {
+            result += `#### ${idx + 1}. ${fr.file}\n\n`;
+            result += `${fr.review}\n\n`;
+            result += '---\n\n';
+        });
+
+        result += '### 📋 Общие выводы\n\n';
+        result += '✅ Все измененные файлы проанализированы отдельно для более качественного review.\n';
+        result += '💡 Обратите внимание на проблемы и рекомендации для каждого файла выше.';
+
+        return result;
+    }
+
+    showHelpMessage() {
+        const helpText = `Доступные команды:
+
+/review [ветка/коммит] - Выполнить code review
+  Без параметров: review текущих изменений (git diff)
+  С параметром: review указанной ветки или коммита
+
+  Умный режим: при >3 файлах автоматически делает пофайловый анализ
+
+  Примеры:
+  • /review - проверить текущие изменения
+  • /review main - проверить изменения в ветке main
+  • /review 5364a66 - проверить конкретный коммит
+
+/help - Показать это сообщение`;
+
+        this.addMessage(helpText, 'assistant');
+        this.setInputState(true);
+        this.messageInput.focus();
+    }
+
+    async sendMessage(message, model, systemPrompt = null) {
         const requestBody = { message };
         if (model) {
             requestBody.model = model;
@@ -415,16 +617,9 @@ class ChatApp {
         if (this.sessionId) {
             requestBody.sessionId = this.sessionId;
         }
-        // Send RAG setting
-        if (this.ragCheckbox && this.ragCheckbox.checked) {
-            requestBody.useRAG = true;
-            requestBody.ragTopK = 3;
-            requestBody.ragMinSimilarity = 0.5;
-
-            // Send Reranking setting (only if RAG is enabled)
-            if (this.rerankingCheckbox && this.rerankingCheckbox.checked) {
-                requestBody.useReranking = true;
-            }
+        // Send custom system prompt if provided
+        if (systemPrompt) {
+            requestBody.systemPrompt = systemPrompt;
         }
 
         const response = await fetch('/api/chat', {
@@ -451,50 +646,22 @@ class ChatApp {
         return data;
     }
 
-    formatTimestamp(timestamp) {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-        const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
-        if (messageDate.getTime() === today.getTime()) {
-            return time;
-        } else {
-            const dateStr = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-            return `${dateStr} ${time}`;
-        }
-    }
-
-    addMessage(text, type, model = null, stats = null, scrollToBottom = true, fromScheduledTask = false, timestamp = null) {
+    addMessage(text, type, model = null, stats = null, scrollToBottom = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
 
-        let label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
-        // Add clock icon for messages from scheduled tasks
-        if (fromScheduledTask && type !== 'error') {
-            label = `⏰ ${label}`;
-        }
+        const label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
         let modelInfo = '';
         if (model && type === 'assistant') {
             const modelName = this.getModelDisplayName(model);
             modelInfo = ` <span class="model-badge">${modelName}</span>`;
         }
-
-        // Add timestamp if available
-        let timestampInfo = '';
-        if (timestamp) {
-            const formattedTime = this.formatTimestamp(timestamp);
-            timestampInfo = ` <span class="message-timestamp">${formattedTime}</span>`;
-        }
-
-        // Use formatText for assistant messages to support markdown-like formatting
-        const formattedText = (type === 'assistant' || type === 'error') ? this.formatText(text) : this.escapeHtml(text);
-        contentDiv.innerHTML = `<strong>${label}:${modelInfo}${timestampInfo}</strong> ${formattedText}`;
+        // Preserve line breaks by converting \n to <br>
+        const formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
+        contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${formattedText}`;
 
         messageDiv.appendChild(contentDiv);
 
@@ -521,29 +688,6 @@ class ChatApp {
                 </div>
             `;
 
-            // Add RAG indicator if RAG was used
-            if (stats.ragUsed) {
-                const sources = stats.ragSources && stats.ragSources.length > 0
-                    ? stats.ragSources.join(', ')
-                    : 'N/A';
-                statsHtml += `
-                    <div class="stats-item rag">
-                        <span class="stats-label">🔍 RAG:</span>
-                        <span class="stats-value">${stats.ragChunksFound} чанков из ${stats.ragSources ? stats.ragSources.length : 0} источников</span>
-                    </div>
-                `;
-            }
-
-            // Add Reranking indicator if reranking was used
-            if (stats.rerankingUsed) {
-                statsHtml += `
-                    <div class="stats-item reranking">
-                        <span class="stats-label">🎯 Reranking:</span>
-                        <span class="stats-value">${(stats.rerankingTimeMs / 1000).toFixed(2)}с</span>
-                    </div>
-                `;
-            }
-
             // Add compression indicator if history was compressed
             if (stats.historyCompressed) {
                 statsHtml += `
@@ -555,20 +699,6 @@ class ChatApp {
 
             statsDiv.innerHTML = statsHtml;
             messageDiv.appendChild(statsDiv);
-
-            // Add view RAG sources button if ragChunks available
-            if (stats.ragChunks && stats.ragChunks.length > 0) {
-                messageDiv.dataset.ragChunks = JSON.stringify(stats.ragChunks);
-
-                const ragButtonDiv = document.createElement('div');
-                ragButtonDiv.className = 'rag-view-button-container';
-                ragButtonDiv.innerHTML = `
-                    <button class="view-rag-sources-btn" title="Просмотреть источники и цитаты">
-                        📖 Просмотреть источники (${stats.ragChunks.length})
-                    </button>
-                `;
-                messageDiv.appendChild(ragButtonDiv);
-            }
         }
 
         this.messagesContainer.appendChild(messageDiv);
@@ -597,25 +727,6 @@ class ChatApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-
-    formatText(text) {
-        // Escape HTML first
-        let formatted = this.escapeHtml(text);
-
-        // Convert line breaks to <br>
-        formatted = formatted.replace(/\n/g, '<br>');
-
-        // Convert **bold** to <strong>
-        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-        // Convert *italic* to <em>
-        formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-        // Convert `code` to <code>
-        formatted = formatted.replace(/`(.+?)`/g, '<code>$1</code>');
-
-        return formatted;
     }
 
     showLoadingIndicator() {
@@ -751,52 +862,6 @@ class ChatApp {
 
     closeModal() {
         this.historyModal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-
-    openRagModal(ragChunks) {
-        const ragChunksContent = document.getElementById('ragChunksContent');
-
-        // Clear previous content
-        ragChunksContent.innerHTML = '';
-
-        // Create chunk items
-        ragChunks.forEach((chunk, index) => {
-            const chunkItem = document.createElement('div');
-            chunkItem.className = 'rag-chunk-item';
-
-            const similarityPercent = (chunk.similarity * 100).toFixed(1);
-
-            chunkItem.innerHTML = `
-                <div class="rag-chunk-header">
-                    <span class="rag-chunk-title">
-                        📄 ${this.escapeHtml(chunk.fileName)}
-                        <span class="rag-chunk-badge">Чанк #${chunk.chunkId}</span>
-                    </span>
-                    <span class="rag-chunk-similarity">
-                        ${similarityPercent}% релевантность
-                    </span>
-                </div>
-                <div class="rag-chunk-text">
-                    ${this.escapeHtml(chunk.text)}
-                </div>
-                <div class="rag-chunk-meta">
-                    <span>📊 Слов: ${chunk.wordCount}</span>
-                    <span>📍 Позиция: ${chunk.startWord}-${chunk.endWord}</span>
-                    <span>🔤 Токенов: ~${chunk.estimatedTokens}</span>
-                </div>
-            `;
-
-            ragChunksContent.appendChild(chunkItem);
-        });
-
-        // Show modal
-        this.ragModal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-
-    closeRagModal() {
-        this.ragModal.style.display = 'none';
         document.body.style.overflow = 'auto';
     }
 }
@@ -1260,8 +1325,6 @@ class TaskManager {
         switch (schedule.type) {
             case 'ONCE':
                 return `Одноразово: ${new Date(schedule.startTime).toLocaleString('ru-RU')}`;
-            case 'MINUTELY':
-                return `Ежеминутно (тестовый режим)`;
             case 'DAILY':
                 return `Ежедневно в ${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
             case 'WEEKLY':

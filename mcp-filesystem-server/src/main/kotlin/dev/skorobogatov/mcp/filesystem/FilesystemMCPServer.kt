@@ -123,6 +123,69 @@ class FilesystemMCPServer(
                             handleGetGitStatus(request)
                         }
 
+                        // Регистрируем инструмент для получения git diff
+                        mcpServer.addTool(
+                            name = "get_git_diff",
+                            description = "Получить diff изменений в рабочей директории. Показывает детальные изменения в файлах.",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("staged") {
+                                        put("type", "boolean")
+                                        put("description", "Показать только staged изменения (по умолчанию: false)")
+                                        put("default", false)
+                                    }
+                                    putJsonObject("file") {
+                                        put("type", "string")
+                                        put("description", "Путь к конкретному файлу (опционально)")
+                                    }
+                                },
+                                required = emptyList()
+                            )
+                        ) { request ->
+                            handleGetGitDiff(request)
+                        }
+
+                        // Регистрируем инструмент для получения git log
+                        mcpServer.addTool(
+                            name = "get_git_log",
+                            description = "Получить историю коммитов git",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("limit") {
+                                        put("type", "number")
+                                        put("description", "Количество последних коммитов (по умолчанию: 10)")
+                                        put("default", 10)
+                                        put("minimum", 1)
+                                        put("maximum", 100)
+                                    }
+                                    putJsonObject("file") {
+                                        put("type", "string")
+                                        put("description", "Путь к файлу для просмотра его истории (опционально)")
+                                    }
+                                },
+                                required = emptyList()
+                            )
+                        ) { request ->
+                            handleGetGitLog(request)
+                        }
+
+                        // Регистрируем инструмент для получения содержимого коммита
+                        mcpServer.addTool(
+                            name = "get_git_commit",
+                            description = "Получить детальную информацию о конкретном коммите (diff, автор, дата)",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("commit_hash") {
+                                        put("type", "string")
+                                        put("description", "Hash коммита (полный или короткий)")
+                                    }
+                                },
+                                required = listOf("commit_hash")
+                            )
+                        ) { request ->
+                            handleGetGitCommit(request)
+                        }
+
                         // Создаем WebSocket transport
                         var messageHandler: (suspend (JSONRPCMessage) -> Unit)? = null
 
@@ -481,6 +544,272 @@ class FilesystemMCPServer(
                 content = listOf(
                     TextContent(
                         text = "Ошибка при получении статуса git: ${e.message}"
+                    )
+                ),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка запроса получения git diff
+     */
+    private fun handleGetGitDiff(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val staged = arguments?.get("staged")?.jsonPrimitive?.booleanOrNull ?: false
+            val file = arguments?.get("file")?.jsonPrimitive?.contentOrNull
+
+            val command = mutableListOf("git", "diff")
+            if (staged) {
+                command.add("--staged")
+            }
+            if (file != null && file.isNotBlank()) {
+                command.add("--")
+                command.add(file)
+            }
+
+            val process = ProcessBuilder(command)
+                .directory(File(projectRoot))
+                .redirectErrorStream(true)
+                .start()
+
+            val output = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor()
+
+            if (process.exitValue() != 0) {
+                return CallToolResult(
+                    content = listOf(
+                        TextContent(
+                            text = "Ошибка: не удалось получить git diff\n$output"
+                        )
+                    ),
+                    isError = true
+                )
+            }
+
+            val response = if (output.isBlank()) {
+                if (file != null) {
+                    "✅ Нет изменений в файле '$file'"
+                } else {
+                    "✅ Нет изменений в рабочей директории"
+                }
+            } else {
+                buildString {
+                    appendLine("📝 Git diff${if (staged) " (staged)" else ""}${if (file != null) " для файла: $file" else ""}:")
+                    appendLine()
+                    appendLine("```diff")
+                    appendLine(output)
+                    appendLine("```")
+                }
+            }
+
+            CallToolResult(
+                content = listOf(
+                    TextContent(text = response)
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error handling get_git_diff: ${e.message}", e)
+            CallToolResult(
+                content = listOf(
+                    TextContent(
+                        text = "Ошибка при получении git diff: ${e.message}"
+                    )
+                ),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка запроса получения git log
+     */
+    private fun handleGetGitLog(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val limit = arguments?.get("limit")?.jsonPrimitive?.intOrNull ?: 10
+            val file = arguments?.get("file")?.jsonPrimitive?.contentOrNull
+
+            val command = mutableListOf(
+                "git", "log",
+                "--format=%H|%an|%ae|%ad|%s",
+                "--date=iso",
+                "-n", limit.toString()
+            )
+            if (file != null && file.isNotBlank()) {
+                command.add("--")
+                command.add(file)
+            }
+
+            val process = ProcessBuilder(command)
+                .directory(File(projectRoot))
+                .redirectErrorStream(true)
+                .start()
+
+            val output = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor()
+
+            if (process.exitValue() != 0) {
+                return CallToolResult(
+                    content = listOf(
+                        TextContent(
+                            text = "Ошибка: не удалось получить git log\n$output"
+                        )
+                    ),
+                    isError = true
+                )
+            }
+
+            if (output.isBlank()) {
+                return CallToolResult(
+                    content = listOf(
+                        TextContent(
+                            text = if (file != null) {
+                                "Нет коммитов для файла '$file'"
+                            } else {
+                                "Нет коммитов в репозитории"
+                            }
+                        )
+                    )
+                )
+            }
+
+            val response = buildString {
+                appendLine("📜 История коммитов${if (file != null) " для файла: $file" else ""} (последние $limit):")
+                appendLine()
+
+                output.lines().forEach { line ->
+                    val parts = line.split("|")
+                    if (parts.size == 5) {
+                        val (hash, author, email, date, message) = parts
+                        appendLine("🔹 Коммит: ${hash.take(8)}")
+                        appendLine("   👤 Автор: $author <$email>")
+                        appendLine("   📅 Дата: $date")
+                        appendLine("   💬 Сообщение: $message")
+                        appendLine()
+                    }
+                }
+            }
+
+            CallToolResult(
+                content = listOf(
+                    TextContent(text = response)
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error handling get_git_log: ${e.message}", e)
+            CallToolResult(
+                content = listOf(
+                    TextContent(
+                        text = "Ошибка при получении git log: ${e.message}"
+                    )
+                ),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка запроса получения информации о коммите
+     */
+    private fun handleGetGitCommit(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val commitHash = arguments?.get("commit_hash")?.jsonPrimitive?.content ?: ""
+
+            if (commitHash.isBlank()) {
+                return CallToolResult(
+                    content = listOf(
+                        TextContent(
+                            text = "Ошибка: не указан hash коммита"
+                        )
+                    ),
+                    isError = true
+                )
+            }
+
+            // Получаем информацию о коммите
+            val infoProcess = ProcessBuilder(
+                "git", "show",
+                "--format=%H|%an|%ae|%ad|%s|%b",
+                "--date=iso",
+                "--no-patch",
+                commitHash
+            )
+                .directory(File(projectRoot))
+                .redirectErrorStream(true)
+                .start()
+
+            val infoOutput = infoProcess.inputStream.bufferedReader().readText().trim()
+            infoProcess.waitFor()
+
+            if (infoProcess.exitValue() != 0) {
+                return CallToolResult(
+                    content = listOf(
+                        TextContent(
+                            text = "Ошибка: не удалось получить информацию о коммите\n$infoOutput"
+                        )
+                    ),
+                    isError = true
+                )
+            }
+
+            // Получаем diff коммита
+            val diffProcess = ProcessBuilder(
+                "git", "show",
+                "--format=",
+                commitHash
+            )
+                .directory(File(projectRoot))
+                .redirectErrorStream(true)
+                .start()
+
+            val diffOutput = diffProcess.inputStream.bufferedReader().readText().trim()
+            diffProcess.waitFor()
+
+            val response = buildString {
+                // Парсим информацию о коммите
+                val parts = infoOutput.split("|")
+                if (parts.size >= 5) {
+                    val (hash, author, email, date, message) = parts.take(5)
+                    val body = if (parts.size > 5) parts[5] else ""
+
+                    appendLine("📦 Информация о коммите:")
+                    appendLine()
+                    appendLine("🔹 Hash: $hash")
+                    appendLine("👤 Автор: $author <$email>")
+                    appendLine("📅 Дата: $date")
+                    appendLine("💬 Сообщение: $message")
+                    if (body.isNotBlank()) {
+                        appendLine()
+                        appendLine("📝 Описание:")
+                        appendLine(body)
+                    }
+                    appendLine()
+                }
+
+                // Добавляем diff
+                if (diffOutput.isNotBlank()) {
+                    appendLine("📝 Изменения:")
+                    appendLine()
+                    appendLine("```diff")
+                    appendLine(diffOutput)
+                    appendLine("```")
+                }
+            }
+
+            CallToolResult(
+                content = listOf(
+                    TextContent(text = response)
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error handling get_git_commit: ${e.message}", e)
+            CallToolResult(
+                content = listOf(
+                    TextContent(
+                        text = "Ошибка при получении информации о коммите: ${e.message}"
                     )
                 ),
                 isError = true

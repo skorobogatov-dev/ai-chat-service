@@ -251,6 +251,12 @@ class ChatApp {
         const message = this.messageInput.value.trim();
         if (!message) return;
 
+        // Check for special commands
+        if (message.startsWith('/')) {
+            await this.handleCommand(message);
+            return;
+        }
+
         // Disable input while processing
         this.setInputState(false);
 
@@ -306,7 +312,276 @@ class ChatApp {
         }
     }
 
-    async sendMessage(message, model) {
+    async handleCommand(commandText) {
+        const parts = commandText.split(' ');
+        const command = parts[0].toLowerCase();
+        const args = parts.slice(1);
+
+        // Add command message to chat
+        this.addMessage(commandText, 'user');
+
+        // Clear input
+        this.messageInput.value = '';
+
+        switch (command) {
+            case '/review':
+                await this.handleReviewCommand(args);
+                break;
+            case '/help':
+                this.showHelpMessage();
+                break;
+            default:
+                this.addMessage(
+                    `Неизвестная команда: ${command}. Используйте /help для списка команд.`,
+                    'error'
+                );
+                this.setInputState(true);
+                this.messageInput.focus();
+        }
+    }
+
+    async handleReviewCommand(args) {
+        // Disable input while processing
+        this.setInputState(false);
+
+        // Show loading indicator
+        this.showLoadingIndicator();
+
+        try {
+            const target = args.length > 0 ? args.join(' ') : null;
+
+            // First, get list of changed files to check if we need to split
+            const statusCheck = await this.sendMessage(
+                'Используй get_git_status() и верни ТОЛЬКО список измененных файлов, по одному на строку, без дополнительного текста.',
+                this.modelSelect.value,
+                'Ты - помощник. Вызови get_git_status() и верни только пути к файлам, по одному на строку. Никакого другого текста.'
+            );
+
+            // Parse files from response
+            const changedFiles = statusCheck.response
+                .split('\n')
+                .filter(line => line.trim().length > 0 && !line.includes(':') && !line.includes('Статус'))
+                .map(line => line.trim().replace(/^[📝📄➕➖❓🔄]\s*/, '').trim())
+                .filter(file => file.endsWith('.kt') || file.endsWith('.js') || file.endsWith('.md'));
+
+            // If more than 3 files, do file-by-file analysis
+            if (changedFiles.length > 3) {
+                await this.handleMultiFileReview(changedFiles);
+                return;
+            }
+
+            // Otherwise, do regular review
+            let reviewMessage;
+            if (target) {
+                // Review specific branch or commit
+                reviewMessage = `Сделай детальный code review для ${target}. Используй git инструменты для получения информации об изменениях. Проанализируй код на наличие:
+- Потенциальных багов и ошибок
+- Security уязвимостей (SQL injection, XSS, CSRF и т.д.)
+- Performance issues
+- Code smells и anti-patterns
+- Нарушений best practices
+Дай конкретные рекомендации по улучшению.`;
+            } else {
+                // Review current changes
+                reviewMessage = `Сделай code review текущих изменений:
+
+1. Используй get_git_status() - узнай какие файлы изменены
+2. Используй get_git_diff() - получи детали изменений
+3. Проанализируй на: баги, security, performance, best practices
+4. Дай структурированный отчет
+
+Отвечай в формате из системного промпта.`;
+            }
+
+            // Send review request with special system prompt
+            const systemPrompt = `Ты code reviewer. Используй MCP инструменты get_git_status и get_git_diff для анализа.
+
+Формат ответа (СТРОГО следуй структуре):
+
+## 📊 Code Review
+
+### 📁 Файлы
+[список из git status]
+
+### ✅ Хорошо
+[3-5 пунктов]
+
+### ⚠️ Проблемы
+[конкретные проблемы с номерами строк]
+
+### 💡 Рекомендации
+[конкретные советы]
+
+ВАЖНО:
+- НЕ копируй код из diff, только анализируй
+- Указывай конкретные файлы и строки
+- Будь кратким и конкретным`;
+
+            const response = await this.sendMessage(reviewMessage, this.modelSelect.value, systemPrompt);
+
+            // Hide loading indicator
+            this.hideLoadingIndicator();
+
+            // Add review result to chat
+            this.addMessage(response.response, 'assistant', response.model, {
+                inputTokens: response.inputTokens,
+                outputTokens: response.outputTokens,
+                totalTokens: response.totalTokens,
+                responseTimeMs: response.responseTimeMs,
+                historyCompressed: response.historyCompressed
+            });
+
+            // Reload conversations list
+            await this.loadConversations();
+
+            // Update title if it's a new conversation
+            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            }
+        } catch (error) {
+            // Hide loading indicator
+            this.hideLoadingIndicator();
+
+            console.error('Error:', error);
+
+            // Check if it's a rate limit error
+            let errorMessage = error.message || 'Не удалось получить ответ';
+            if (errorMessage.includes('rate_limit') || errorMessage.includes('429')) {
+                errorMessage = `⏱️ Rate Limit: Превышен лимит запросов к Claude API.
+
+Решения:
+• Подождите 1 минуту и попробуйте снова
+• Используйте модель Haiku (она быстрее и экономичнее)
+• Проверьте конкретный файл вместо всех изменений
+• Задайте более простой вопрос без /review
+
+Технические детали: ${error.message}`;
+            }
+
+            this.addMessage(
+                `Ошибка при выполнении code review:\n\n${errorMessage}`,
+                'error'
+            );
+        } finally {
+            // Re-enable input
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
+    }
+
+    async handleMultiFileReview(files) {
+        try {
+            this.hideLoadingIndicator();
+            this.addMessage(
+                `🔍 Обнаружено ${files.length} измененных файлов. Выполняю пофайловый анализ для избежания rate limit...`,
+                'assistant'
+            );
+            this.showLoadingIndicator();
+
+            const fileReviews = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                this.hideLoadingIndicator();
+                this.addMessage(`📄 Анализирую файл ${i + 1}/${files.length}: ${file}`, 'assistant');
+                this.showLoadingIndicator();
+
+                try {
+                    const reviewMessage = `Проанализируй изменения в файле ${file}:
+
+1. Используй get_git_diff(file="${file}") чтобы получить diff
+2. Проверь на: баги, security, performance
+3. Дай краткий отчет (3-5 пунктов)`;
+
+                    const systemPrompt = `Ты code reviewer. Используй get_git_diff для анализа конкретного файла.
+Формат:
+✅ Хорошо: [1-2 пункта]
+⚠️ Проблемы: [конкретные проблемы]
+💡 Рекомендации: [советы]
+Будь кратким!`;
+
+                    const response = await this.sendMessage(reviewMessage, this.modelSelect.value, systemPrompt);
+
+                    fileReviews.push({
+                        file: file,
+                        review: response.response
+                    });
+                } catch (error) {
+                    console.error(`Error reviewing ${file}:`, error);
+                    fileReviews.push({
+                        file: file,
+                        review: `❌ Ошибка: ${error.message}`
+                    });
+                }
+            }
+
+            // Aggregate results
+            this.hideLoadingIndicator();
+
+            const aggregatedReview = this.aggregateFileReviews(fileReviews);
+            this.addMessage(aggregatedReview, 'assistant', this.modelSelect.value);
+
+            // Reload conversations
+            await this.loadConversations();
+
+            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
+            if (conv && conv.title) {
+                this.chatTitle.textContent = conv.title;
+            }
+        } catch (error) {
+            this.hideLoadingIndicator();
+            console.error('Error in multi-file review:', error);
+            this.addMessage(
+                `Ошибка при пофайловом анализе: ${error.message}`,
+                'error'
+            );
+        } finally {
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
+    }
+
+    aggregateFileReviews(fileReviews) {
+        let result = '## 📊 Code Review (пофайловый анализ)\n\n';
+        result += `### 📁 Проанализировано файлов: ${fileReviews.length}\n\n`;
+
+        fileReviews.forEach((fr, idx) => {
+            result += `#### ${idx + 1}. ${fr.file}\n\n`;
+            result += `${fr.review}\n\n`;
+            result += '---\n\n';
+        });
+
+        result += '### 📋 Общие выводы\n\n';
+        result += '✅ Все измененные файлы проанализированы отдельно для более качественного review.\n';
+        result += '💡 Обратите внимание на проблемы и рекомендации для каждого файла выше.';
+
+        return result;
+    }
+
+    showHelpMessage() {
+        const helpText = `Доступные команды:
+
+/review [ветка/коммит] - Выполнить code review
+  Без параметров: review текущих изменений (git diff)
+  С параметром: review указанной ветки или коммита
+
+  Умный режим: при >3 файлах автоматически делает пофайловый анализ
+
+  Примеры:
+  • /review - проверить текущие изменения
+  • /review main - проверить изменения в ветке main
+  • /review 5364a66 - проверить конкретный коммит
+
+/help - Показать это сообщение`;
+
+        this.addMessage(helpText, 'assistant');
+        this.setInputState(true);
+        this.messageInput.focus();
+    }
+
+    async sendMessage(message, model, systemPrompt = null) {
         const requestBody = { message };
         if (model) {
             requestBody.model = model;
@@ -314,6 +589,10 @@ class ChatApp {
         // Send sessionId if we have one
         if (this.sessionId) {
             requestBody.sessionId = this.sessionId;
+        }
+        // Send custom system prompt if provided
+        if (systemPrompt) {
+            requestBody.systemPrompt = systemPrompt;
         }
 
         const response = await fetch('/api/chat', {
@@ -353,7 +632,9 @@ class ChatApp {
             const modelName = this.getModelDisplayName(model);
             modelInfo = ` <span class="model-badge">${modelName}</span>`;
         }
-        contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${this.escapeHtml(text)}`;
+        // Preserve line breaks by converting \n to <br>
+        const formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
+        contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${formattedText}`;
 
         messageDiv.appendChild(contentDiv);
 

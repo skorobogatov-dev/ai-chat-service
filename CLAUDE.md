@@ -24,6 +24,10 @@ ai-chat-service/
 │   ├── src/main/kotlin/        # Код MCP сервера (ActivitiesMCPServer.kt, ActivitiesService.kt)
 │   ├── src/main/resources/     # Конфигурация (logback.xml)
 │   └── build.gradle.kts        # Зависимости модуля mcp-activities-server
+├── mcp-filesystem-server/      # MCP сервер для файловой системы и git
+│   ├── src/main/kotlin/        # Код MCP сервера (FilesystemMCPServer.kt)
+│   ├── src/main/resources/     # Конфигурация (logback.xml)
+│   └── build.gradle.kts        # Зависимости модуля mcp-filesystem-server
 ├── web/                        # Веб-интерфейс (исходные файлы)
 │   ├── index.html
 │   ├── css/
@@ -74,6 +78,19 @@ ai-chat-service/
 
 # Production build MCP сервера
 ./gradlew :mcp-activities-server:installDist
+```
+
+### Build and Run - MCP Filesystem Server Module
+
+```bash
+# Сборка MCP сервера для файловой системы и git
+./gradlew :mcp-filesystem-server:build
+
+# Запуск MCP сервера (порт 3002)
+./gradlew :mcp-filesystem-server:run
+
+# Production build MCP сервера
+./gradlew :mcp-filesystem-server:installDist
 ```
 
 ### Build All Modules
@@ -127,6 +144,7 @@ curl -X POST http://localhost:8080/api/chat \
 - Основной сервер запускается на порту 8080 (настраивается в application.conf)
 - MCP Weather сервер запускается на порту 3000
 - MCP Activities сервер запускается на порту 3001
+- MCP Filesystem сервер запускается на порту 3002 (для работы с файловой системой и git)
 - По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
 - JSON формат: `{"question": "...", "answer": "...", "tags": [...]}` - в ответе пользователю выводится только поле `answer`
 - Ollama сервер (опционально) для векторизации на http://localhost:11434 (можно переопределить через OLLAMA_BASE_URL)
@@ -171,6 +189,15 @@ export MCP_SERVER_URL="ws://localhost:3000/mcp"
 
 **Activities Server (порт 3001):**
 - `suggest_activities(temperature, weather_code, precipitation?, wind_speed?, humidity?)` - предложить активности на основе погоды
+
+**Filesystem Server (порт 3002):**
+- `list_files(path?, recursive?)` - получить список файлов и директорий в проекте
+- `read_file(path)` - прочитать содержимое файла из проекта
+- `get_git_branch()` - получить текущую ветку git
+- `get_git_status()` - получить статус git (измененные, добавленные, удаленные файлы)
+- `get_git_diff(staged?, file?)` - получить diff изменений в рабочей директории
+- `get_git_log(limit?, file?)` - получить историю коммитов git (по умолчанию: 10 последних)
+- `get_git_commit(commit_hash)` - получить детальную информацию о конкретном коммите (diff, автор, дата)
 
 Пример использования:
 ```bash
@@ -967,6 +994,109 @@ curl -X POST http://localhost:8080/api/chat \
 - **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
 - **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям и задачам из разных потоков
 - **Local embeddings** - использование локального Ollama для векторизации без внешних API вызовов и с полным контролем над данными
+
+## Code Review через MCP Filesystem Server + RAG
+
+Система поддерживает полноценный code review с использованием MCP Filesystem Server и RAG:
+
+### Возможности для Code Review
+
+1. **Анализ изменений через git diff** - Claude AI может получить diff изменений и проанализировать их
+2. **Чтение файлов проекта** - доступ к любым файлам проекта для понимания контекста
+3. **История коммитов** - просмотр истории изменений для понимания эволюции кода
+4. **RAG на основе документации** - использование векторизованной документации для проверки соответствия best practices
+
+### Пример: Автоматический Code Review
+
+```bash
+# 1. Терминал 1: Запустить MCP Filesystem Server
+./gradlew :mcp-filesystem-server:run
+
+# 2. Терминал 2: Запустить основной сервер
+export ANTHROPIC_API_KEY="your-api-key"
+./gradlew :server:run
+
+# 3. Терминал 3: Подключиться к Filesystem MCP
+curl -X POST http://localhost:8080/api/mcp/connect \
+  -H "Content-Type: application/json" \
+  -d '{"serverUrl": "ws://localhost:3002/mcp", "transportType": "websocket"}'
+
+# 4. (Опционально) Векторизовать документацию для RAG
+curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
+  -F "file=@docs/coding-standards.md" \
+  -F "saveToFile=true"
+
+# 5. Задать вопрос о code review с использованием RAG
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Проанализируй текущие изменения в проекте. Проверь git diff, найди потенциальные проблемы, баги и дай рекомендации по улучшению кода.",
+    "useRAG": true,
+    "ragTopK": 5
+  }'
+```
+
+### Как работает Code Review
+
+1. **Claude AI получает вопрос** о code review
+2. **Автоматически вызывает MCP инструменты:**
+   - `get_git_status()` - проверяет, какие файлы изменены
+   - `get_git_diff()` - получает детальные изменения
+   - `read_file(path)` - читает измененные файлы для понимания контекста
+   - `get_git_log()` - смотрит историю изменений (при необходимости)
+3. **RAG добавляет контекст:**
+   - Ищет релевантные разделы документации
+   - Находит best practices из стандартов кодирования
+4. **Claude AI анализирует:**
+   - Потенциальные баги и уязвимости
+   - Соответствие стандартам кодирования
+   - Performance issues
+   - Code smells и anti-patterns
+   - Рекомендации по улучшению
+5. **Формирует детальный отчет** с конкретными рекомендациями
+
+### Примеры вопросов для Code Review
+
+```bash
+# Общий review всех изменений
+"Сделай code review текущих изменений. Что можно улучшить?"
+
+# Review конкретного файла
+"Проверь изменения в файле server/Application.kt. Есть ли потенциальные проблемы?"
+
+# Проверка на security issues
+"Проанализируй diff на наличие security уязвимостей (SQL injection, XSS, etc)"
+
+# Проверка соответствия стандартам
+"Проверь, соответствуют ли изменения нашим coding standards из документации"
+
+# Анализ конкретного коммита
+"Проанализируй коммит 5364a66 и найди возможные баги"
+```
+
+### Интеграция с CI/CD
+
+MCP Filesystem Server можно интегрировать в CI/CD pipeline для автоматического code review:
+
+```bash
+# В GitHub Actions / GitLab CI
+- name: Start MCP Filesystem Server
+  run: ./gradlew :mcp-filesystem-server:run &
+
+- name: Start AI Chat Server
+  run: ./gradlew :server:run &
+
+- name: Run Code Review
+  run: |
+    curl -X POST http://localhost:8080/api/mcp/connect \
+      -H "Content-Type: application/json" \
+      -d '{"serverUrl": "ws://localhost:3002/mcp", "transportType": "websocket"}'
+
+    curl -X POST http://localhost:8080/api/chat \
+      -H "Content-Type: application/json" \
+      -d '{"message": "Проведи code review изменений в текущей ветке"}' \
+      > review_report.json
+```
 
 ## External Dependencies
 - **Anthropic Claude API** (requires API key)
