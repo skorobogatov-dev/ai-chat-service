@@ -3,6 +3,7 @@ package dev.skorobogatov.plugins
 import dev.skorobogatov.routes.chatRoutes
 import dev.skorobogatov.routes.embeddingRoutes
 import dev.skorobogatov.routes.mcpRoutes
+import dev.skorobogatov.routes.supportRoutes
 import dev.skorobogatov.routes.taskRoutes
 import dev.skorobogatov.services.ClaudeService
 import dev.skorobogatov.services.ConversationHistoryService
@@ -21,12 +22,14 @@ fun Application.configureRouting(
     ollamaService: OllamaService,
     chunkerService: dev.skorobogatov.services.TextChunkerService,
     vectorStoreService: dev.skorobogatov.services.VectorStoreService,
-    commandHandler: dev.skorobogatov.services.CommandHandler
+    commandHandler: dev.skorobogatov.services.CommandHandler,
+    supportSystemPrompt: String
 ) {
     routing {
         chatRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, commandHandler)
         mcpRoutes(mcpService)
         taskRoutes(schedulerService)
         embeddingRoutes(ollamaService, chunkerService, vectorStoreService)
+        supportRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, supportSystemPrompt)
     }
 }

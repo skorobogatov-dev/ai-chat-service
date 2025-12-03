@@ -1,0 +1,149 @@
+{
+    "tickets": [
+        {
+            "id": "ticket-001",
+            "userId": "user-001",
+            "subject": "Не работает авторизация через Google",
+            "description": "При попытке войти через Google появляется ошибка 'OAuth failed'",
+            "status": "RESOLVED",
+            "priority": "HIGH",
+            "createdAt": "2024-11-10T10:00:00",
+            "updatedAt": "2024-11-11T14:30:00",
+            "assignedTo": "Support Team",
+            "messages": [
+                {
+                    "id": "msg-001",
+                    "author": "Алексей Петров",
+                    "content": "При попытке войти через Google появляется ошибка 'OAuth failed'",
+                    "timestamp": "2024-11-10T10:00:00",
+                    "isFromSupport": false
+                },
+                {
+                    "id": "msg-002",
+                    "author": "Support Agent",
+                    "content": "Проверьте разрешения в настройках Google аккаунта. Также очистите кэш браузера.",
+                    "timestamp": "2024-11-10T12:15:00",
+                    "isFromSupport": true
+                },
+                {
+                    "id": "msg-003",
+                    "author": "Алексей Петров",
+                    "content": "Помогло! Спасибо!",
+                    "timestamp": "2024-11-11T14:30:00",
+                    "isFromSupport": false
+                }
+            ]
+        },
+        {
+            "id": "ticket-002",
+            "userId": "user-002",
+            "subject": "Как экспортировать задачи в CSV?",
+            "description": "Не могу найти кнопку экспорта в интерфейсе",
+            "status": "OPEN",
+            "priority": "MEDIUM",
+            "createdAt": "2024-11-15T09:30:00",
+            "updatedAt": "2024-11-15T09:30:00",
+            "messages": [
+                {
+                    "id": "msg-004",
+                    "author": "Мария Иванова",
+                    "content": "Не могу найти кнопку экспорта в интерфейсе",
+                    "timestamp": "2024-11-15T09:30:00",
+                    "isFromSupport": false
+                }
+            ]
+        },
+        {
+            "id": "ticket-003",
+            "userId": "user-001",
+            "subject": "Ошибка при создании подзадачи",
+            "description": "При попытке создать подзадачу появляется ошибка 500",
+            "status": "IN_PROGRESS",
+            "priority": "HIGH",
+            "createdAt": "2024-11-18T11:00:00",
+            "updatedAt": "2024-11-18T15:45:00",
+            "assignedTo": "Dev Team",
+            "messages": [
+                {
+                    "id": "msg-005",
+                    "author": "Алексей Петров",
+                    "content": "При попытке создать подзадачу появляется ошибка 500",
+                    "timestamp": "2024-11-18T11:00:00",
+                    "isFromSupport": false
+                },
+                {
+                    "id": "msg-006",
+                    "author": "Support Agent",
+                    "content": "Передали баг в разработку. Разбираемся.",
+                    "timestamp": "2024-11-18T15:45:00",
+                    "isFromSupport": true
+                }
+            ]
+        },
+        {
+            "id": "ticket-004",
+            "userId": "user-003",
+            "subject": "Не приходят email-уведомления",
+            "description": "Настроил уведомления, но письма не приходят",
+            "status": "WAITING_USER",
+            "priority": "MEDIUM",
+            "createdAt": "2024-11-19T14:20:00",
+            "updatedAt": "2024-11-19T16:10:00",
+            "assignedTo": "Support Team",
+            "messages": [
+                {
+                    "id": "msg-007",
+                    "author": "Дмитрий Сидоров",
+                    "content": "Настроил уведомления, но письма не приходят",
+                    "timestamp": "2024-11-19T14:20:00",
+                    "isFromSupport": false
+                },
+                {
+                    "id": "msg-008",
+                    "author": "Support Agent",
+                    "content": "Проверьте папку Спам. Также убедитесь, что email указан правильно в профиле.",
+                    "timestamp": "2024-11-19T16:10:00",
+                    "isFromSupport": true
+                }
+            ]
+        },
+        {
+            "id": "ticket-005",
+            "userId": "user-004",
+            "subject": "Проблема с синхронизацией календаря",
+            "description": "Задачи не появляются в Google Calendar",
+            "status": "OPEN",
+            "priority": "LOW",
+            "createdAt": "2024-11-20T10:15:00",
+            "updatedAt": "2024-11-20T10:15:00",
+            "messages": [
+                {
+                    "id": "msg-009",
+                    "author": "Елена Кузнецова",
+                    "content": "Задачи не появляются в Google Calendar",
+                    "timestamp": "2024-11-20T10:15:00",
+                    "isFromSupport": false
+                }
+            ]
+        },
+        {
+            "id": "ticket-a92cabfa",
+            "userId": "user-002",
+            "subject": "Тестовый тикет",
+            "description": "Проверка",
+            "status": "OPEN",
+            "priority": "MEDIUM",
+            "createdAt": "2025-12-04T00:31:34.839494",
+            "updatedAt": "2025-12-04T00:31:34.839494",
+            "messages": [
+                {
+                    "id": "msg-a8e4c1ee",
+                    "author": "Мария Иванова",
+                    "content": "Проверка",
+                    "timestamp": "2025-12-04T00:31:34.839494",
+                    "isFromSupport": false
+                }
+            ]
+        }
+    ]
+}

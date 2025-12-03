@@ -24,39 +24,12 @@ class ChatApp {
         this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
         this.viewHistoryButton.addEventListener('click', () => this.viewHistory());
         this.closeModalButton.addEventListener('click', () => this.closeModal());
-        this.closeRagModalButton.addEventListener('click', () => this.closeRagModal());
         this.newChatButton.addEventListener('click', () => this.createNewConversation());
         this.historyModal.addEventListener('click', (e) => {
             if (e.target === this.historyModal) {
                 this.closeModal();
             }
         });
-        this.ragModal.addEventListener('click', (e) => {
-            if (e.target === this.ragModal) {
-                this.closeRagModal();
-            }
-        });
-
-        // Event delegation for view RAG sources buttons
-        this.messagesContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('view-rag-sources-btn')) {
-                const messageDiv = e.target.closest('.message');
-                if (messageDiv && messageDiv.dataset.ragChunks) {
-                    this.openRagModal(JSON.parse(messageDiv.dataset.ragChunks));
-                }
-            }
-        });
-
-        // Enable/disable reranking checkbox based on RAG checkbox
-        this.ragCheckbox.addEventListener('change', () => {
-            this.rerankingCheckbox.disabled = !this.ragCheckbox.checked;
-            if (!this.ragCheckbox.checked) {
-                this.rerankingCheckbox.checked = false;
-            }
-        });
-
-        // Initially disable reranking checkbox
-        this.rerankingCheckbox.disabled = true;
 
         // Load conversations list
         await this.loadConversations();

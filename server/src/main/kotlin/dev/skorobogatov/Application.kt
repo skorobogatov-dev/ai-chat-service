@@ -11,6 +11,7 @@ import io.ktor.server.application.*
 import io.ktor.server.netty.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import java.io.File
 
 fun main(args: Array<String>) {
     EngineMain.main(args)
@@ -35,6 +36,27 @@ fun Application.module() {
         - Never include any text outside the JSON structure
     """.trimIndent()
     val systemPrompt = environment.config.propertyOrNull("claude.systemPrompt")?.getString() ?: defaultSystemPrompt
+
+    // Специальный системный промпт для технической поддержки
+    val supportSystemPrompt = environment.config.propertyOrNull("support.systemPrompt")?.getString() ?: """
+        You are a technical support assistant for TaskMaster Pro, a task and project management platform.
+
+        Your role:
+        - Help users solve problems with the product
+        - Answer questions about features, billing, and integrations
+        - Search for relevant information in documentation (RAG provides context automatically)
+        - Look up user information and ticket history (use MCP tools when needed)
+        - Provide clear, friendly, and professional answers
+
+        Guidelines:
+        - Always be polite and helpful
+        - Use documentation to provide accurate answers
+        - Check user's ticket history for context if user ID is provided
+        - If unsure, refer to documentation or ask for clarification
+        - Suggest creating a support ticket for complex issues
+
+        Format responses in a friendly, professional manner.
+    """.trimIndent()
 
     // Создание HTTP клиента для запросов к Anthropic API и Ollama
     val httpClient = HttpClient(CIO) {
@@ -128,7 +150,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler, supportSystemPrompt)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -183,6 +205,31 @@ fun Application.module() {
         }
     }
 
+    // Автоматическое подключение к MCP Support Server
+    val mcpSupportUrl = environment.config.propertyOrNull("mcp.supportServerUrl")?.getString() ?: "ws://localhost:3003/mcp"
+    environment.log.info("MCP Support server URL configured: $mcpSupportUrl")
+    launch {
+        try {
+            // Даем время серверу запуститься
+            kotlinx.coroutines.delay(3000)
+
+            environment.log.info("Connecting to MCP Support server: $mcpSupportUrl")
+            val status = mcpService.connect(mcpSupportUrl, "websocket")
+            if (status.connected) {
+                environment.log.info("Successfully connected to MCP Support server")
+                // Получить список доступных инструментов
+                val tools = mcpService.listTools()
+                environment.log.info("Available Support MCP tools: ${tools.tools.joinToString(", ") { it.name }}")
+            } else {
+                environment.log.warn("Failed to connect to MCP Support server: ${status.error}")
+                environment.log.info("Make sure to start the support MCP server: ./gradlew :mcp-support-server:run")
+            }
+        } catch (e: Exception) {
+            environment.log.error("Error connecting to MCP Support server: ${e.message}", e)
+            environment.log.info("Make sure to start the support MCP server: ./gradlew :mcp-support-server:run")
+        }
+    }
+
     // Логирование при старте
     environment.monitor.subscribe(ApplicationStarted) {
         environment.log.info("Application started successfully")
@@ -212,8 +259,21 @@ fun Application.module() {
                     return@launch
                 }
 
-                val mdFiles = docsDir.listFiles { file -> file.extension == "md" }
-                if (mdFiles.isNullOrEmpty()) {
+                // Рекурсивно найти все .md файлы в docs/ и поддиректориях
+                fun File.findMarkdownFiles(): List<java.io.File> {
+                    val result = mutableListOf<java.io.File>()
+                    if (this.isFile && this.extension == "md") {
+                        result.add(this)
+                    } else if (this.isDirectory) {
+                        this.listFiles()?.forEach { child ->
+                            result.addAll(child.findMarkdownFiles())
+                        }
+                    }
+                    return result
+                }
+
+                val mdFiles = docsDir.findMarkdownFiles()
+                if (mdFiles.isEmpty()) {
                     environment.log.warn("No .md files found in docs/ directory")
                     return@launch
                 }

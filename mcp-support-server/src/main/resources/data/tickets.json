@@ -1,0 +1,303 @@
+{
+  "tickets": [
+    {
+      "id": "ticket-001",
+      "userId": "user-001",
+      "subject": "Не работает авторизация через Google",
+      "description": "При попытке войти через Google OAuth появляется ошибка 'Доступ запрещен'",
+      "status": "RESOLVED",
+      "priority": "HIGH",
+      "createdAt": "2025-11-10T09:30:00",
+      "updatedAt": "2025-11-11T14:20:00",
+      "assignedTo": "support-agent-1",
+      "messages": [
+        {
+          "id": "msg-001",
+          "author": "Алексей Петров",
+          "content": "При попытке войти через Google OAuth появляется ошибка 'Доступ запрещен'. Раньше все работало нормально.",
+          "timestamp": "2025-11-10T09:30:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-002",
+          "author": "Support Agent",
+          "content": "Здравствуйте! Проверьте, пожалуйста: 1) Предоставлен ли доступ к email в настройках Google аккаунта 2) Попробуйте очистить кэш браузера",
+          "timestamp": "2025-11-10T10:15:00",
+          "isFromSupport": true
+        },
+        {
+          "id": "msg-003",
+          "author": "Алексей Петров",
+          "content": "Спасибо! После очистки кэша все заработало.",
+          "timestamp": "2025-11-11T14:20:00",
+          "isFromSupport": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-002",
+      "userId": "user-002",
+      "subject": "Как экспортировать задачи в CSV?",
+      "description": "Не могу найти функцию экспорта задач в CSV формат",
+      "status": "OPEN",
+      "priority": "MEDIUM",
+      "createdAt": "2025-12-01T11:45:00",
+      "updatedAt": "2025-12-01T11:45:00",
+      "messages": [
+        {
+          "id": "msg-004",
+          "author": "Мария Иванова",
+          "content": "Не могу найти функцию экспорта задач в CSV формат. Подскажите, пожалуйста, как это сделать?",
+          "timestamp": "2025-12-01T11:45:00",
+          "isFromSupport": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-003",
+      "userId": "user-003",
+      "subject": "Ошибка при создании подзадачи",
+      "description": "При создании подзадачи появляется ошибка 500",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "createdAt": "2025-11-28T15:20:00",
+      "updatedAt": "2025-11-29T10:30:00",
+      "assignedTo": "support-agent-2",
+      "messages": [
+        {
+          "id": "msg-005",
+          "author": "Дмитрий Сидоров",
+          "content": "При создании подзадачи в проекте 'Enterprise Dashboard' появляется ошибка 500. Логи прилагаю.",
+          "timestamp": "2025-11-28T15:20:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-006",
+          "author": "Support Agent",
+          "content": "Спасибо за сообщение! Передал проблему в технический отдел. Ожидаем решения в течение 24 часов.",
+          "timestamp": "2025-11-29T10:30:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-004",
+      "userId": "user-004",
+      "subject": "Не приходят email-уведомления",
+      "description": "Уведомления о новых задачах не приходят на почту",
+      "status": "WAITING_USER",
+      "priority": "MEDIUM",
+      "createdAt": "2025-11-25T14:00:00",
+      "updatedAt": "2025-11-26T09:15:00",
+      "assignedTo": "support-agent-1",
+      "messages": [
+        {
+          "id": "msg-007",
+          "author": "Елена Кузнецова",
+          "content": "Уведомления о новых задачах не приходят на почту уже неделю.",
+          "timestamp": "2025-11-25T14:00:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-008",
+          "author": "Support Agent",
+          "content": "Проверьте, пожалуйста, настройки уведомлений в Профиль → Настройки → Уведомления. Также проверьте папку 'Спам'.",
+          "timestamp": "2025-11-26T09:15:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-005",
+      "userId": "user-005",
+      "subject": "Проблема с синхронизацией календаря",
+      "description": "Задачи не появляются в Google Calendar",
+      "status": "OPEN",
+      "priority": "MEDIUM",
+      "createdAt": "2025-12-02T10:30:00",
+      "updatedAt": "2025-12-02T10:30:00",
+      "messages": [
+        {
+          "id": "msg-009",
+          "author": "Иван Смирнов",
+          "content": "Задачи не появляются в Google Calendar, хотя синхронизация включена.",
+          "timestamp": "2025-12-02T10:30:00",
+          "isFromSupport": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-006",
+      "userId": "user-001",
+      "subject": "Как настроить автоматические напоминания?",
+      "description": "Хочу получать напоминания за день до дедлайна",
+      "status": "RESOLVED",
+      "priority": "LOW",
+      "createdAt": "2025-11-20T12:00:00",
+      "updatedAt": "2025-11-20T16:45:00",
+      "assignedTo": "support-agent-3",
+      "messages": [
+        {
+          "id": "msg-010",
+          "author": "Алексей Петров",
+          "content": "Хочу получать напоминания за день до дедлайна. Как это настроить?",
+          "timestamp": "2025-11-20T12:00:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-011",
+          "author": "Support Agent",
+          "content": "Перейдите в Настройки → Уведомления → Напоминания о дедлайнах. Там можно настроить время напоминания (за 1 день, 3 дня, неделю).",
+          "timestamp": "2025-11-20T16:45:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-007",
+      "userId": "user-002",
+      "subject": "Не работает фильтр по тегам",
+      "description": "При применении фильтра по тегам результаты не обновляются",
+      "status": "CLOSED",
+      "priority": "MEDIUM",
+      "createdAt": "2025-11-18T09:20:00",
+      "updatedAt": "2025-11-19T14:00:00",
+      "assignedTo": "support-agent-2",
+      "messages": [
+        {
+          "id": "msg-012",
+          "author": "Мария Иванова",
+          "content": "При применении фильтра по тегам результаты не обновляются.",
+          "timestamp": "2025-11-18T09:20:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-013",
+          "author": "Support Agent",
+          "content": "Проблема была связана с кэшем браузера. Исправлено в обновлении v1.5.2",
+          "timestamp": "2025-11-19T14:00:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-008",
+      "userId": "user-004",
+      "subject": "Вопрос по тарифам и биллингу",
+      "description": "Хочу перейти с Premium на Enterprise",
+      "status": "RESOLVED",
+      "priority": "MEDIUM",
+      "createdAt": "2025-11-22T13:30:00",
+      "updatedAt": "2025-11-23T11:20:00",
+      "assignedTo": "billing-agent",
+      "messages": [
+        {
+          "id": "msg-014",
+          "author": "Елена Кузнецова",
+          "content": "Хочу перейти с Premium на Enterprise. Как это сделать и какие условия?",
+          "timestamp": "2025-11-22T13:30:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-015",
+          "author": "Billing Agent",
+          "content": "Для перехода на Enterprise свяжитесь с нами по email: enterprise@taskmaster.pro. Мы предоставим индивидуальное предложение.",
+          "timestamp": "2025-11-23T11:20:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-009",
+      "userId": "user-005",
+      "subject": "Как добавить участников в проект?",
+      "description": "Не нахожу функцию добавления участников",
+      "status": "OPEN",
+      "priority": "LOW",
+      "createdAt": "2025-12-01T15:00:00",
+      "updatedAt": "2025-12-01T15:00:00",
+      "messages": [
+        {
+          "id": "msg-016",
+          "author": "Иван Смирнов",
+          "content": "Не нахожу функцию добавления участников в проект. Где это находится?",
+          "timestamp": "2025-12-01T15:00:00",
+          "isFromSupport": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-010",
+      "userId": "user-003",
+      "subject": "API: ошибка 403 при создании задачи",
+      "description": "При создании задачи через API получаю ошибку 403 Forbidden",
+      "status": "IN_PROGRESS",
+      "priority": "URGENT",
+      "createdAt": "2025-11-30T10:00:00",
+      "updatedAt": "2025-12-01T09:30:00",
+      "assignedTo": "api-support",
+      "messages": [
+        {
+          "id": "msg-017",
+          "author": "Дмитрий Сидоров",
+          "content": "При создании задачи через API получаю ошибку 403 Forbidden. API ключ валидный, проверял.",
+          "timestamp": "2025-11-30T10:00:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-018",
+          "author": "API Support",
+          "content": "Проверьте, пожалуйста, права (scopes) вашего API ключа. Для создания задач нужен scope 'tasks:write'.",
+          "timestamp": "2025-12-01T09:30:00",
+          "isFromSupport": true
+        }
+      ]
+    },
+    {
+      "id": "ticket-011",
+      "userId": "user-002",
+      "subject": "Медленная загрузка списка задач",
+      "description": "Список задач загружается более 10 секунд",
+      "status": "OPEN",
+      "priority": "HIGH",
+      "createdAt": "2025-12-02T14:20:00",
+      "updatedAt": "2025-12-02T14:20:00",
+      "messages": [
+        {
+          "id": "msg-019",
+          "author": "Мария Иванова",
+          "content": "Список задач загружается очень медленно (более 10 секунд). У меня около 500 задач.",
+          "timestamp": "2025-12-02T14:20:00",
+          "isFromSupport": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-012",
+      "userId": "user-001",
+      "subject": "Вопрос по интеграции со Slack",
+      "description": "Как настроить уведомления в Slack?",
+      "status": "RESOLVED",
+      "priority": "MEDIUM",
+      "createdAt": "2025-11-27T11:00:00",
+      "updatedAt": "2025-11-27T15:30:00",
+      "assignedTo": "support-agent-1",
+      "messages": [
+        {
+          "id": "msg-020",
+          "author": "Алексей Петров",
+          "content": "Как настроить уведомления о новых задачах в Slack?",
+          "timestamp": "2025-11-27T11:00:00",
+          "isFromSupport": false
+        },
+        {
+          "id": "msg-021",
+          "author": "Support Agent",
+          "content": "Перейдите в Настройки → Интеграции → Slack. Нажмите 'Подключить' и следуйте инструкциям. Подробнее в документации: docs.taskmaster.pro/integrations/slack",
+          "timestamp": "2025-11-27T15:30:00",
+          "isFromSupport": true
+        }
+      ]
+    }
+  ]
+}

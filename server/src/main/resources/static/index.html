@@ -36,6 +36,7 @@
                 <button class="tab-button active" data-tab="chat">💬 Чат</button>
                 <button class="tab-button" data-tab="mcp">🔧 MCP Tools</button>
                 <button class="tab-button" data-tab="tasks">⏰ Задачи</button>
+                <button class="tab-button" data-tab="support">🎧 Поддержка</button>
             </div>
 
             <!-- Chat Tab Content -->
@@ -56,20 +57,6 @@
                                 <option value="claude-3-haiku-20240307">Haiku (Быстрая и доступная)</option>
                                 <option value="claude-sonnet-4-20250514" selected>Sonnet 4 (Самая продвинутая)</option>
                             </select>
-                        </div>
-                        <div class="rag-toggle">
-                            <label for="ragCheckbox" class="rag-label">
-                                <input type="checkbox" id="ragCheckbox" checked>
-                                <span class="rag-text">🔍 Использовать RAG</span>
-                                <span class="rag-hint">(Поиск в документах)</span>
-                            </label>
-                        </div>
-                        <div class="rag-toggle">
-                            <label for="rerankingCheckbox" class="rag-label">
-                                <input type="checkbox" id="rerankingCheckbox">
-                                <span class="rag-text">🎯 Включить Reranking</span>
-                                <span class="rag-hint">(Улучшает качество RAG)</span>
-                            </label>
                         </div>
                         <div class="input-row">
                             <input
@@ -169,7 +156,6 @@
                                 <label for="scheduleType">Тип расписания:</label>
                                 <select id="scheduleType" required>
                                     <option value="ONCE">Одноразовое выполнение</option>
-                                    <option value="MINUTELY">Ежеминутно (тест)</option>
                                     <option value="DAILY">Ежедневно</option>
                                     <option value="WEEKLY">Еженедельно</option>
                                 </select>
@@ -239,6 +225,96 @@
                 </div>
             </div>
 
+            <!-- Support Tab Content -->
+            <div id="supportTab" class="tab-content">
+                <div class="support-container">
+                    <!-- User Info Section -->
+                    <div class="support-section">
+                        <h2>👤 Информация о пользователе</h2>
+                        <form id="userSearchForm" class="support-form">
+                            <div class="form-group">
+                                <label for="userId">User ID:</label>
+                                <input type="text" id="userId" placeholder="user-001" required>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary">Найти пользователя</button>
+                            </div>
+                        </form>
+                        <div id="userInfo" class="user-info" style="display: none;">
+                            <!-- User info will be displayed here -->
+                        </div>
+                    </div>
+
+                    <!-- Tickets Section -->
+                    <div class="support-section">
+                        <h2>🎫 Тикеты пользователя</h2>
+                        <div id="ticketsList" class="tickets-list">
+                            <p class="support-placeholder">Введите User ID для просмотра тикетов</p>
+                        </div>
+                    </div>
+
+                    <!-- Create Ticket Section -->
+                    <div class="support-section">
+                        <h2>➕ Создать тикет</h2>
+                        <form id="createTicketForm" class="support-form">
+                            <div class="form-group">
+                                <label for="ticketUserId">User ID:</label>
+                                <input type="text" id="ticketUserId" placeholder="user-001" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="ticketSubject">Тема:</label>
+                                <input type="text" id="ticketSubject" placeholder="Не работает авторизация" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="ticketDescription">Описание проблемы:</label>
+                                <textarea id="ticketDescription" rows="4" placeholder="Подробное описание проблемы..." required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="ticketPriority">Приоритет:</label>
+                                <select id="ticketPriority">
+                                    <option value="LOW">Низкий</option>
+                                    <option value="MEDIUM" selected>Средний</option>
+                                    <option value="HIGH">Высокий</option>
+                                    <option value="URGENT">Срочный</option>
+                                </select>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary">Создать тикет</button>
+                                <button type="button" id="resetTicketForm" class="btn-secondary">Очистить</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Support Chat Section -->
+                    <div class="support-section">
+                        <h2>💬 Чат с ассистентом поддержки</h2>
+                        <p class="support-hint">Ассистент автоматически использует RAG (документация) и MCP (история тикетов) для ответов</p>
+                        <div id="supportMessages" class="messages support-messages">
+                            <div class="message assistant">
+                                <div class="message-content">
+                                    <strong>Support Assistant:</strong> Здравствуйте! Я помогу решить вашу проблему. Укажите User ID или Ticket ID для контекста.
+                                </div>
+                            </div>
+                        </div>
+                        <form id="supportChatForm" class="support-chat-form">
+                            <div class="form-row">
+                                <input type="text" id="supportUserId" placeholder="User ID (опционально)">
+                                <input type="text" id="supportTicketId" placeholder="Ticket ID (опционально)">
+                            </div>
+                            <div class="form-row">
+                                <textarea id="supportMessage" placeholder="Опишите вашу проблему..." rows="3" required></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary">Отправить</button>
+                            </div>
+                        </form>
+                        <div id="supportChatInfo" class="support-chat-info" style="display: none;">
+                            <!-- RAG and MCP context info will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <footer>
                 <p>AI Chat Service | REST API at <code>/api/chat</code></p>
             </footer>
@@ -259,19 +335,7 @@
         </div>
     </div>
 
-    <!-- RAG Resources Modal -->
-    <div id="ragModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>📚 Источники и цитаты из документов</h2>
-                <button class="close-button" id="closeRagModalButton">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="ragChunksContent" class="rag-modal-content"></div>
-            </div>
-        </div>
-    </div>
-
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/support.js"></script>
 </body>
 </html>
