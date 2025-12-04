@@ -230,6 +230,31 @@ fun Application.module() {
         }
     }
 
+    // Автоматическое подключение к MCP Task Server
+    val mcpTaskUrl = environment.config.propertyOrNull("mcp.taskServerUrl")?.getString() ?: "ws://localhost:3004/mcp"
+    environment.log.info("MCP Task server URL configured: $mcpTaskUrl")
+    launch {
+        try {
+            // Даем время серверу запуститься
+            kotlinx.coroutines.delay(4000)
+
+            environment.log.info("Connecting to MCP Task server: $mcpTaskUrl")
+            val status = mcpService.connect(mcpTaskUrl, "websocket")
+            if (status.connected) {
+                environment.log.info("Successfully connected to MCP Task server")
+                // Получить список доступных инструментов
+                val tools = mcpService.listTools()
+                environment.log.info("Available Task MCP tools: ${tools.tools.joinToString(", ") { it.name }}")
+            } else {
+                environment.log.warn("Failed to connect to MCP Task server: ${status.error}")
+                environment.log.info("Make sure to start the task MCP server: ./gradlew :mcp-task-server:run")
+            }
+        } catch (e: Exception) {
+            environment.log.error("Error connecting to MCP Task server: ${e.message}", e)
+            environment.log.info("Make sure to start the task MCP server: ./gradlew :mcp-task-server:run")
+        }
+    }
+
     // Логирование при старте
     environment.monitor.subscribe(ApplicationStarted) {
         environment.log.info("Application started successfully")

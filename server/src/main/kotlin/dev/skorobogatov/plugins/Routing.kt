@@ -5,6 +5,7 @@ import dev.skorobogatov.routes.embeddingRoutes
 import dev.skorobogatov.routes.mcpRoutes
 import dev.skorobogatov.routes.supportRoutes
 import dev.skorobogatov.routes.taskRoutes
+import dev.skorobogatov.routes.taskManagementRoutes
 import dev.skorobogatov.services.ClaudeService
 import dev.skorobogatov.services.ConversationHistoryService
 import dev.skorobogatov.services.MCPService
@@ -29,6 +30,7 @@ fun Application.configureRouting(
         chatRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, commandHandler)
         mcpRoutes(mcpService)
         taskRoutes(schedulerService)
+        taskManagementRoutes(mcpService)
         embeddingRoutes(ollamaService, chunkerService, vectorStoreService)
         supportRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, supportSystemPrompt)
     }
