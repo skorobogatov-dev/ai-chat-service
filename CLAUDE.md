@@ -1,1108 +1,225 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-AI Chat Service - multi-module проект на Ktor для взаимодействия с Claude AI через Anthropic API.
+AI Chat Service - multi-module Ktor проект для взаимодействия с Claude AI через Anthropic API.
 
 ### Модульная структура
 
-Проект разделён на независимые модули:
-
 ```
 ai-chat-service/
-├── server/                      # Основной REST API сервер
-│   ├── src/main/kotlin/        # Код сервера (Application.kt, routes/, services/, plugins/)
-│   ├── src/main/resources/     # Конфигурация (application.conf, logback.xml, static/)
-│   └── build.gradle.kts        # Зависимости модуля server
-├── mcp-weather-server/         # MCP сервер для погоды
-│   ├── src/main/kotlin/        # Код MCP сервера (WeatherMCPServer.kt, WeatherService.kt)
-│   ├── src/main/resources/     # Конфигурация (logback.xml)
-│   └── build.gradle.kts        # Зависимости модуля mcp-weather-server
-├── mcp-activities-server/      # MCP сервер для рекомендаций активностей
-│   ├── src/main/kotlin/        # Код MCP сервера (ActivitiesMCPServer.kt, ActivitiesService.kt)
-│   ├── src/main/resources/     # Конфигурация (logback.xml)
-│   └── build.gradle.kts        # Зависимости модуля mcp-activities-server
-├── mcp-filesystem-server/      # MCP сервер для файловой системы и git
-│   ├── src/main/kotlin/        # Код MCP сервера (FilesystemMCPServer.kt)
-│   ├── src/main/resources/     # Конфигурация (logback.xml)
-│   └── build.gradle.kts        # Зависимости модуля mcp-filesystem-server
-├── web/                        # Веб-интерфейс (исходные файлы)
-│   ├── index.html
-│   ├── css/
-│   └── js/
-├── settings.gradle.kts         # Конфигурация модулей
-└── build.gradle.kts            # Корневой build файл
+├── server/                      # Основной REST API сервер (порт 8080)
+├── mcp-weather-server/          # MCP сервер для погоды (порт 3000)
+├── mcp-activities-server/       # MCP сервер для активностей (порт 3001)
+├── mcp-filesystem-server/       # MCP сервер для файловой системы и git (порт 3002)
+├── web/                         # Веб-интерфейс
+├── settings.gradle.kts
+└── build.gradle.kts
 ```
 
-## Build and Development Commands
-
-### Build and Run - Server Module
+## Build Commands
 
 ```bash
-# Сборка основного сервера
-./gradlew :server:build
+# Основные команды
+./gradlew build                          # Сборка всех модулей
+./gradlew clean                          # Очистка
+./gradlew :server:run                    # Запуск сервера (порт 8080)
+./gradlew :server:test                   # Тесты сервера
 
-# Запуск основного сервера в dev режиме (порт 8080)
-./gradlew :server:run
-
-# Запуск тестов сервера
-./gradlew :server:test
-
-# Production build сервера
-./gradlew :server:installDist
+# MCP серверы
+./gradlew :mcp-weather-server:run        # Погода (порт 3000)
+./gradlew :mcp-activities-server:run     # Активности (порт 3001)
+./gradlew :mcp-filesystem-server:run     # Файлы и git (порт 3002)
 ```
 
-### Build and Run - MCP Weather Server Module
+## Configuration
 
-```bash
-# Сборка MCP погодного сервера
-./gradlew :mcp-weather-server:build
+| Переменная | Описание | Значение по умолчанию |
+|------------|----------|----------------------|
+| ANTHROPIC_API_KEY | API ключ Anthropic | - |
+| MCP_SERVER_URL | URL MCP сервера для автоподключения | - |
+| CLAUDE_SYSTEM_PROMPT | Системный промпт | JSON формат |
+| OLLAMA_BASE_URL | URL Ollama сервера | http://localhost:11434 |
+| OLLAMA_MODEL | Модель для embeddings | nomic-embed-text |
 
-# Запуск MCP погодного сервера (порт 3000)
-./gradlew :mcp-weather-server:run
+## API Endpoints
 
-# Production build MCP сервера
-./gradlew :mcp-weather-server:installDist
-```
-
-### Build and Run - MCP Activities Server Module
-
-```bash
-# Сборка MCP сервера активностей
-./gradlew :mcp-activities-server:build
-
-# Запуск MCP сервера активностей (порт 3001)
-./gradlew :mcp-activities-server:run
-
-# Production build MCP сервера
-./gradlew :mcp-activities-server:installDist
-```
-
-### Build and Run - MCP Filesystem Server Module
-
-```bash
-# Сборка MCP сервера для файловой системы и git
-./gradlew :mcp-filesystem-server:build
-
-# Запуск MCP сервера (порт 3002)
-./gradlew :mcp-filesystem-server:run
-
-# Production build MCP сервера
-./gradlew :mcp-filesystem-server:installDist
-```
-
-### Build All Modules
-
-```bash
-# Сборка всех модулей
-./gradlew build
-
-# Очистка всех модулей
-./gradlew clean
-```
-
-### Запуск полной системы (Server + MCP Servers)
-
-**Базовый запуск (Server + Weather):**
-```bash
-# Терминал 1: Запустить MCP Weather Server
-./gradlew :mcp-weather-server:run
-
-# Терминал 2: Запустить основной Server с подключением к MCP
-export MCP_SERVER_URL="ws://localhost:3000/mcp"
-export ANTHROPIC_API_KEY="your-api-key"
-./gradlew :server:run
-```
-
-**Цепочка MCP серверов (Weather + Activities):**
-```bash
-# Терминал 1: Запустить MCP Weather Server
-./gradlew :mcp-weather-server:run
-
-# Терминал 2: Запустить MCP Activities Server
-./gradlew :mcp-activities-server:run
-
-# Терминал 3: Запустить основной Server
-export ANTHROPIC_API_KEY="your-api-key"
-./gradlew :server:run
-
-# Терминал 4: Подключиться к Weather MCP
-curl -X POST http://localhost:8080/api/mcp/connect \
-  -H "Content-Type: application/json" \
-  -d '{"serverUrl": "ws://localhost:3000/mcp", "transportType": "websocket"}'
-
-# Терминал 4: Задать вопрос о погоде и активностях
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Какая погода в Москве? Что можно сегодня делать?"}'
-```
-
-### Configuration
-- Установить ANTHROPIC_API_KEY через environment или в `server/src/main/resources/application.conf`
-- Основной сервер запускается на порту 8080 (настраивается в application.conf)
-- MCP Weather сервер запускается на порту 3000
-- MCP Activities сервер запускается на порту 3001
-- MCP Filesystem сервер запускается на порту 3002 (для работы с файловой системой и git)
-- По умолчанию включен системный промпт для JSON ответов (можно переопределить через CLAUDE_SYSTEM_PROMPT)
-- JSON формат: `{"question": "...", "answer": "...", "tags": [...]}` - в ответе пользователю выводится только поле `answer`
-- Ollama сервер (опционально) для векторизации на http://localhost:11434 (можно переопределить через OLLAMA_BASE_URL)
-- Модель Ollama по умолчанию: nomic-embed-text (можно переопределить через OLLAMA_MODEL)
-
-### API Documentation (Swagger UI)
-Проект включает полную OpenAPI документацию, доступную через Swagger UI:
-
-- **Swagger UI**: http://localhost:8080/swagger
-  - Интерактивная документация всех API endpoints
-  - Возможность тестировать запросы прямо из браузера
-  - Автоматическая валидация параметров
-
-- **OpenAPI Spec**: http://localhost:8080/openapi
-  - OpenAPI 3.0 спецификация в формате HTML
-  - Полное описание всех endpoints, моделей данных и параметров
-
-Документация включает все endpoints:
-- Chat API (диалоги с Claude AI)
-- Embeddings API (векторизация текста через Ollama)
-- MCP API (Model Context Protocol интеграция)
-- Tasks API (запланированные задачи)
-
-### MCP Integration (автоматическое использование инструментов)
-Для автоматического подключения к MCP серверу при старте приложения:
-```bash
-export MCP_SERVER_URL="ws://localhost:3000/mcp"
-./gradlew :server:run
-```
-
-Когда MCP сервер подключен, Claude AI **автоматически** использует доступные инструменты:
-- При вопросе о погоде → вызов MCP инструмента `get_weather` (Weather Server)
-- При вопросе о прогнозе → вызов MCP инструмента `get_forecast` (Weather Server)
-- При вопросе о рекомендациях активностей → вызов MCP инструмента `suggest_activities` (Activities Server)
-- Claude сам решает, когда использовать инструменты, на основе вопроса пользователя
-
-**Доступные MCP инструменты:**
-
-**Weather Server (порт 3000):**
-- `get_weather(city)` - получить текущую погоду для города
-- `get_forecast(city, days)` - получить прогноз на несколько дней
-
-**Activities Server (порт 3001):**
-- `suggest_activities(temperature, weather_code, precipitation?, wind_speed?, humidity?)` - предложить активности на основе погоды
-
-**Filesystem Server (порт 3002):**
-- `list_files(path?, recursive?)` - получить список файлов и директорий в проекте
-- `read_file(path)` - прочитать содержимое файла из проекта
-- `get_git_branch()` - получить текущую ветку git
-- `get_git_status()` - получить статус git (измененные, добавленные, удаленные файлы)
-- `get_git_diff(staged?, file?)` - получить diff изменений в рабочей директории
-- `get_git_log(limit?, file?)` - получить историю коммитов git (по умолчанию: 10 последних)
-- `get_git_commit(commit_hash)` - получить детальную информацию о конкретном коммите (diff, автор, дата)
-
-Пример использования:
-```bash
-# 1. Терминал 1: Запустить MCP Weather Server
-./gradlew :mcp-weather-server:run
-
-# 2. Терминал 2: Запустить основной сервер с MCP_SERVER_URL
-export MCP_SERVER_URL="ws://localhost:3000/mcp"
-export ANTHROPIC_API_KEY="your-key"
-./gradlew :server:run
-
-# 3. Терминал 3: Задать вопрос о погоде - Claude автоматически использует MCP инструмент
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Какая погода в Москве?"}'
-
-# Claude:
-# 1. Получит вопрос
-# 2. Определит, что нужен инструмент get_weather
-# 3. Вызовет MCP инструмент с параметром city="Москва"
-# 4. Получит данные о погоде
-# 5. Сформирует понятный ответ пользователю
-```
-
-**Пример цепочки MCP серверов (Weather → Activities):**
-
-Чтобы продемонстрировать цепочку вызовов, когда Claude сначала получает погоду, а затем предлагает активности:
-
-```bash
-# 1. Запустить оба MCP сервера (в отдельных терминалах)
-./gradlew :mcp-weather-server:run          # Терминал 1 (порт 3000)
-./gradlew :mcp-activities-server:run       # Терминал 2 (порт 3001)
-
-# 2. Запустить основной сервер
-export ANTHROPIC_API_KEY="your-key"
-./gradlew :server:run                       # Терминал 3
-
-# 3. Подключиться к Weather MCP серверу
-curl -X POST http://localhost:8080/api/mcp/connect \
-  -H "Content-Type: application/json" \
-  -d '{"serverUrl": "ws://localhost:3000/mcp", "transportType": "websocket"}'
-
-# 4. Задать вопрос, требующий цепочки вызовов
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Какая погода в Москве сейчас? Что мне сегодня можно делать?"}'
-
-# Claude выполнит цепочку:
-# 1. Вызовет get_weather("Москва") на Weather Server
-# 2. Получит данные: температура, weather_code, осадки, ветер
-# 3. Вручную вызовет suggest_activities() на Activities Server с полученными параметрами
-#    (либо можно подключить Activities Server через MCP API)
-# 4. Объединит результаты и вернет пользователю комплексный ответ
-
-# Альтернатива: прямой вызов suggest_activities через MCP API
-curl -X POST http://localhost:8080/api/mcp/connect \
-  -H "Content-Type: application/json" \
-  -d '{"serverUrl": "ws://localhost:3001/mcp", "transportType": "websocket"}'
-
-curl -X POST http://localhost:8080/api/mcp/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "toolName": "suggest_activities",
-    "arguments": {
-      "temperature": 15.5,
-      "weather_code": 0,
-      "precipitation": 0,
-      "wind_speed": 10,
-      "humidity": 60
-    }
-  }'
-```
-
-### Testing API
+### Chat API
 ```bash
 # Базовый запрос (создает новую сессию)
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Привет!"}'
 
-# Ответ: {"response": "...", "sessionId": "uuid", "model": "claude-sonnet-4-20250514", ...}
-
-# Продолжение диалога (используем sessionId из предыдущего ответа)
+# Продолжение диалога
 curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Расскажи подробнее",
-    "sessionId": "полученный-uuid-из-предыдущего-ответа"
-  }'
+  -d '{"message": "Расскажи подробнее", "sessionId": "uuid-from-previous-response"}'
 
-# С переопределением системного промпта
+# С RAG и reranking
 curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Что такое Kotlin?", "systemPrompt": "Отвечай обычным текстом"}'
-
-# С выбором конкретной модели (быстрая и доступная Haiku)
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Простой вопрос", "model": "claude-3-haiku-20240307"}'
-
-# С выбором самой продвинутой модели (Sonnet 4 для сложных задач)
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Сложная задача", "model": "claude-sonnet-4-20250514"}'
-
-# С переопределением модели и системного промпта одновременно
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Explain quantum computing",
-    "model": "claude-sonnet-4-20250514",
-    "systemPrompt": "Answer in Russian, be concise"
-  }'
+  -d '{"message": "Вопрос", "useRAG": true, "useReranking": true, "ragTopK": 3}'
 ```
 
-### Механизм истории диалога
+**Параметры ChatRequest:**
+- `message` (обязательно) - сообщение пользователя
+- `sessionId` - ID сессии для продолжения диалога
+- `systemPrompt` - переопределение системного промпта
+- `model` - модель Claude (claude-3-haiku-20240307, claude-sonnet-4-20250514)
+- `useRAG` - включить RAG (default: false)
+- `ragTopK` - количество чанков для контекста (default: 3)
+- `ragMinSimilarity` - минимальное сходство (default: 0.5)
+- `useReranking` - включить reranking (default: false)
 
-Сервис автоматически сохраняет историю диалогов и использует механизм **сжатия истории**:
-
-- **Автоматическое сжатие**: Каждые 3 пары сообщений (user + assistant) автоматически заменяются на summary
-- **Управление сессиями**:
-  - Если `sessionId` не указан в запросе - создается новая сессия
-  - Если `sessionId` указан - продолжается существующий диалог
-  - `sessionId` возвращается в каждом ответе для продолжения диалога
-- **Флаг сжатия**: В ответе присутствует поле `historyCompressed` (true/false), показывающее, была ли сжата история в этом запросе
-- **Персистентное хранилище**:
-  - История автоматически сохраняется в JSON файлы в директории `chat_sessions/`
-  - Каждый диалог хранится в отдельном файле: `{sessionId}.json`
-  - При перезапуске сервера все диалоги автоматически загружаются из файлов
-  - Можно продолжить беседу после перезапуска сервера
-- **Автоматическая генерация названий**:
-  - При создании нового диалога автоматически генерируется название по первому сообщению пользователя
-  - Название создается с помощью Claude AI (краткое, 5-7 слов)
-  - Названия сохраняются вместе с историей диалога
-
-### Доступные модели Claude (от слабых к сильным)
-
-1. **claude-3-haiku-20240307** - Самая быстрая и доступная модель, идеальна для простых задач
-2. **claude-sonnet-4-20250514** - Самая продвинутая модель Claude 4 поколения (рекомендуется по умолчанию)
-
-Модель по умолчанию настраивается в `application.conf`. Если не указано иное, используется модель из конфигурации.
-
-### Scheduled Tasks API
-
-Сервис поддерживает создание задач по расписанию для автоматического выполнения запросов к Claude AI.
-
-#### Создание задачи
+### MCP API
 ```bash
-# Одноразовая задача (выполнится один раз в указанное время)
-curl -X POST http://localhost:8080/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Weather Check",
-    "description": "Daily weather forecast",
-    "question": "Какая завтра погода в Москве и что можно надеть?",
-    "sessionId": null,
-    "schedule": {
-      "type": "ONCE",
-      "startTime": "2025-11-20T09:00:00"
-    }
-  }'
-
-# Ежедневная задача (выполняется каждый день в указанное время)
-curl -X POST http://localhost:8080/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Daily Weather",
-    "question": "Какая сегодня погода?",
-    "schedule": {
-      "type": "DAILY",
-      "hour": 9,
-      "minute": 0
-    }
-  }'
-
-# Еженедельная задача (выполняется в указанный день недели и время)
-curl -X POST http://localhost:8080/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Weekly Report",
-    "question": "Составь отчет за неделю",
-    "schedule": {
-      "type": "WEEKLY",
-      "dayOfWeek": 1,
-      "hour": 10,
-      "minute": 0
-    }
-  }'
-
-# Ответ: {
-#   "id": "uuid",
-#   "name": "Weather Check",
-#   "description": "Daily weather forecast",
-#   "question": "Какая завтра погода в Москве и что можно надеть?",
-#   "sessionId": null,
-#   "schedule": {...},
-#   "enabled": true,
-#   "createdAt": "2025-11-19T19:37:02.999845",
-#   "nextExecutionAt": "2025-11-20T09:00:00"
-# }
-```
-
-**Параметры создания задачи:**
-- `name` (обязательно) - название задачи
-- `description` (опционально) - описание задачи
-- `question` (обязательно) - вопрос для Claude AI
-- `sessionId` (опционально) - ID диалога для записи результатов (если null - создастся новый диалог)
-- `schedule` (обязательно) - расписание выполнения:
-  - `type`: `"ONCE"`, `"DAILY"`, или `"WEEKLY"`
-  - Для `ONCE`: `startTime` в формате ISO-8601 (`"YYYY-MM-DDTHH:MM:SS"`)
-  - Для `DAILY`: `hour` (0-23) и `minute` (0-59)
-  - Для `WEEKLY`: `dayOfWeek` (1=Понедельник...7=Воскресенье), `hour`, `minute`
-
-#### Получение списка задач
-```bash
-curl http://localhost:8080/api/tasks
-# Ответ: {
-#   "tasks": [...],
-#   "totalCount": 5
-# }
-```
-
-#### Получение конкретной задачи
-```bash
-curl http://localhost:8080/api/tasks/{taskId}
-```
-
-#### Обновление задачи
-```bash
-curl -X PUT http://localhost:8080/api/tasks/{taskId} \
-  -H "Content-Type: application/json" \
-  -d '{
-    "enabled": false
-  }'
-```
-
-**Параметры обновления (все опциональны):**
-- `name` - новое название
-- `description` - новое описание
-- `question` - новый вопрос
-- `sessionId` - новый ID диалога
-- `schedule` - новое расписание
-- `enabled` - включить/выключить задачу (true/false)
-
-#### Удаление задачи
-```bash
-curl -X DELETE http://localhost:8080/api/tasks/{taskId}
-```
-
-#### Просмотр истории выполнений
-```bash
-curl http://localhost:8080/api/tasks/{taskId}/executions
-# Ответ: {
-#   "executions": [
-#     {
-#       "id": "execution-uuid",
-#       "taskId": "task-uuid",
-#       "taskName": "Weather Check",
-#       "question": "Какая завтра погода?",
-#       "response": "...",
-#       "sessionId": "session-uuid",
-#       "success": true,
-#       "executedAt": "2025-11-19T19:38:05.764242",
-#       "executionTimeMs": 5761
-#     }
-#   ],
-#   "totalCount": 10,
-#   "taskId": "task-uuid"
-# }
-```
-
-**Как работают задачи:**
-1. Задача создается и планируется на указанное время
-2. В заданное время сервер автоматически:
-   - Создает новую сессию или использует указанную
-   - Отправляет вопрос в Claude AI
-   - Сохраняет ответ в историю диалога
-   - Записывает результат выполнения
-3. Для периодических задач (DAILY, WEEKLY) автоматически планируется следующее выполнение
-4. Все задачи и выполнения сохраняются в директорию `scheduled_tasks/`
-
-### Model Context Protocol (MCP) API
-
-Сервис поддерживает интеграцию с MCP серверами для доступа к инструментам через Model Context Protocol.
-
-#### Подключение к MCP серверу
-```bash
+# Подключение к MCP серверу
 curl -X POST http://localhost:8080/api/mcp/connect \
-  -H "Content-Type: application/json" \
-  -d '{
-    "serverUrl": "ws://localhost:3000/mcp",
-    "transportType": "websocket"
-  }'
-# Ответ: {"connected": true, "serverUrl": "ws://localhost:3000/mcp"}
-```
+  -d '{"serverUrl": "ws://localhost:3000/mcp", "transportType": "websocket"}'
 
-#### Получение списка доступных инструментов
-```bash
+# Список инструментов
 curl http://localhost:8080/api/mcp/tools
-# Ответ: {
-#   "tools": [
-#     {"name": "tool1", "description": "...", "inputSchema": {...}},
-#     {"name": "tool2", "description": "...", "inputSchema": {...}}
-#   ],
-#   "totalCount": 2,
-#   "serverUrl": "ws://localhost:3000/mcp",
-#   "connected": true
-# }
-```
 
-#### Вызов инструмента
-```bash
+# Вызов инструмента
 curl -X POST http://localhost:8080/api/mcp/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "toolName": "echo",
-    "arguments": {"text": "Hello MCP!"}
-  }'
-# Ответ: {"result": "...", "toolName": "echo", "success": true}
-```
+  -d '{"toolName": "get_weather", "arguments": {"city": "Москва"}}'
 
-#### Проверка статуса подключения
-```bash
+# Статус и отключение
 curl http://localhost:8080/api/mcp/status
-# Ответ: {"connected": true, "serverUrl": "ws://localhost:3000/mcp"}
-```
-
-#### Отключение от MCP сервера
-```bash
 curl -X POST http://localhost:8080/api/mcp/disconnect
-# Ответ: {"message": "Disconnected from MCP server"}
 ```
 
-### Ollama Embeddings API
+**MCP инструменты:**
 
-Сервис поддерживает векторизацию текста через локальный Ollama сервер с моделью nomic-embed-text.
+| Сервер | Инструмент | Описание |
+|--------|-----------|----------|
+| Weather (3000) | get_weather(city) | Текущая погода |
+| Weather (3000) | get_forecast(city, days) | Прогноз погоды |
+| Activities (3001) | suggest_activities(temperature, weather_code, ...) | Рекомендации активностей |
+| Filesystem (3002) | list_files(path?, recursive?) | Список файлов |
+| Filesystem (3002) | read_file(path) | Чтение файла |
+| Filesystem (3002) | get_git_branch() | Текущая ветка |
+| Filesystem (3002) | get_git_status() | Статус git |
+| Filesystem (3002) | get_git_diff(staged?, file?) | Diff изменений |
+| Filesystem (3002) | get_git_log(limit?, file?) | История коммитов |
+| Filesystem (3002) | get_git_commit(commit_hash) | Детали коммита |
 
-#### Требования
-- Установленный Ollama сервер на http://localhost:11434
-- Загруженная модель nomic-embed-text:
-  ```bash
-  ollama pull nomic-embed-text
-  ```
-
-#### Конфигурация
-Настройки Ollama можно переопределить через environment переменные:
+### Tasks API (Scheduled Tasks)
 ```bash
-export OLLAMA_BASE_URL="http://localhost:11434"  # URL Ollama сервера
-export OLLAMA_MODEL="nomic-embed-text"           # Модель для векторизации
-./gradlew :server:run
+# Создание задачи
+curl -X POST http://localhost:8080/api/tasks \
+  -d '{"name": "Daily Weather", "question": "Погода?", "schedule": {"type": "DAILY", "hour": 9, "minute": 0}}'
+
+# Список / получение / обновление / удаление
+curl http://localhost:8080/api/tasks
+curl http://localhost:8080/api/tasks/{taskId}
+curl -X PUT http://localhost:8080/api/tasks/{taskId} -d '{"enabled": false}'
+curl -X DELETE http://localhost:8080/api/tasks/{taskId}
+
+# История выполнений
+curl http://localhost:8080/api/tasks/{taskId}/executions
 ```
 
-#### Получение embedding для одного текста
+**Типы расписания:** ONCE (startTime), DAILY (hour, minute), WEEKLY (dayOfWeek, hour, minute)
+
+### Embeddings API
 ```bash
-curl -X POST http://localhost:8080/api/embeddings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Текст для векторизации"
-  }'
-# Ответ: {
-#   "embedding": [0.123, -0.456, 0.789, ...],
-#   "model": "nomic-embed-text",
-#   "dimension": 768,
-#   "processingTimeMs": 145
-# }
-```
+# Получение embedding
+curl -X POST http://localhost:8080/api/embeddings -d '{"text": "Текст"}'
 
-#### Получение embeddings для нескольких текстов (batch)
-```bash
-curl -X POST http://localhost:8080/api/embeddings/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "texts": [
-      "Первый текст",
-      "Второй текст",
-      "Третий текст"
-    ]
-  }'
-# Ответ: {
-#   "embeddings": [
-#     [0.123, -0.456, ...],
-#     [0.234, -0.567, ...],
-#     [0.345, -0.678, ...]
-#   ],
-#   "model": "nomic-embed-text",
-#   "dimension": 768,
-#   "count": 3,
-#   "processingTimeMs": 432
-# }
-```
+# Batch embeddings
+curl -X POST http://localhost:8080/api/embeddings/batch -d '{"texts": ["Текст 1", "Текст 2"]}'
 
-#### Проверка статуса Ollama сервера
-```bash
-curl http://localhost:8080/api/embeddings/status
-# Ответ (доступен): {
-#   "available": true,
-#   "url": "http://localhost:11434",
-#   "model": "nomic-embed-text"
-# }
-# Ответ (недоступен): {
-#   "available": false,
-#   "url": "http://localhost:11434",
-#   "model": "nomic-embed-text",
-#   "error": "Connection failed: Connection refused"
-# }
-```
-
-**Использование embeddings:**
-- Семантический поиск документов
-- Вычисление схожести текстов
-- Кластеризация документов
-- Рекомендательные системы
-- Классификация текстов
-
-**Особенности модели nomic-embed-text:**
-- Размерность вектора: 768
-- Максимальная длина текста: ~8192 токенов
-- Поддержка множества языков (включая русский)
-- Оптимизирована для семантического поиска
-
-### RAG (Retrieval-Augmented Generation) System
-
-Сервис поддерживает RAG для обогащения ответов Claude AI контекстом из векторизованных документов.
-
-#### Как работает RAG
-
-1. **Подготовка документов**:
-   - Загрузите текст или файл через `/api/embeddings/vectorize` или `/api/embeddings/vectorize-file`
-   - Текст автоматически разбивается на чанки с перекрытием
-   - Каждый чанк векторизуется через Ollama (nomic-embed-text)
-   - Результат сохраняется в `embeddings_output/` директорию
-
-2. **Использование в чате**:
-   - При отправке сообщения с `useRAG: true`, запрос векторизуется
-   - Система ищет наиболее похожие чанки из индекса (cosine similarity)
-   - Найденные чанки добавляются в системный промпт как контекст
-   - Claude AI использует этот контекст для формирования ответа
-
-#### Подготовка документов для RAG
-
-```bash
-# Векторизация текста
+# Векторизация для RAG
 curl -X POST http://localhost:8080/api/embeddings/vectorize \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Ваш большой текст для векторизации...",
-    "chunkSize": 750,
-    "overlap": 75,
-    "saveToFile": true,
-    "outputFileName": "my_document.json"
-  }'
+  -d '{"text": "...", "chunkSize": 750, "overlap": 75, "saveToFile": true}'
 
 # Векторизация файла
-curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
-  -F "file=@path/to/document.txt" \
-  -F "chunkSize=750" \
-  -F "overlap=75" \
-  -F "saveToFile=true"
+curl -X POST http://localhost:8080/api/embeddings/vectorize-file -F "file=@document.txt"
 
-# Ответ: {
-#   "metadata": {
-#     "timestamp": "2025-11-25 18:00:00",
-#     "totalChunks": 15,
-#     "chunkSizeTokens": 750,
-#     "overlapTokens": 75,
-#     "totalTextTokens": 10500,
-#     "model": "nomic-embed-text",
-#     "embeddingDimension": 768,
-#     "totalProcessingTimeMs": 5432,
-#     "savedToFile": "/path/to/embeddings_output/my_document.json"
-#   },
-#   "chunks": [...]
-# }
-```
-
-#### Использование RAG в чате
-
-```bash
-# Запрос с RAG (автоматически находит релевантный контекст)
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Расскажи о главном герое книги",
-    "useRAG": true,
-    "ragTopK": 3,
-    "ragMinSimilarity": 0.5
-  }'
-
-# Ответ: {
-#   "response": "Главный герой книги...",
-#   "sessionId": "uuid",
-#   "model": "claude-sonnet-4-20250514",
-#   "ragUsed": true,
-#   "ragChunksFound": 3,
-#   "ragSources": ["book_embeddings.json"],
-#   ...
-# }
-```
-
-**Параметры RAG:**
-- `useRAG` (boolean, default: false) - включить RAG
-- `ragTopK` (int, default: 3) - количество похожих чанков для контекста
-- `ragMinSimilarity` (double, default: 0.5) - минимальное значение сходства (0.0 - 1.0)
-- `useReranking` (boolean, default: false) - включить reranking для улучшения качества RAG (работает только с useRAG=true)
-
-#### Reranking для улучшения качества RAG
-
-Reranking - это двухэтапный подход, который значительно улучшает качество поиска:
-
-1. **Первый этап (быстрый)**: Поиск топ-K*2 кандидатов по embedding similarity (cosine similarity)
-2. **Второй этап (точный)**: Claude AI оценивает релевантность каждого кандидата к запросу и переранжирует результаты
-
-**Преимущества reranking:**
-- Более точная оценка релевантности документов к запросу
-- Claude AI понимает семантику запроса и документов глубже, чем простое косинусное сходство
-- Особенно полезно для сложных вопросов, где нужен глубокий анализ контекста
-
-```bash
-# Запрос с RAG и reranking (максимальное качество поиска)
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Расскажи о главном герое книги и его эволюции",
-    "useRAG": true,
-    "useReranking": true,
-    "ragTopK": 3,
-    "ragMinSimilarity": 0.5
-  }'
-
-# Ответ: {
-#   "response": "Главный герой книги...",
-#   "sessionId": "uuid",
-#   "model": "claude-sonnet-4-20250514",
-#   "ragUsed": true,
-#   "ragChunksFound": 3,
-#   "ragSources": ["book_embeddings.json"],
-#   "rerankingUsed": true,
-#   "rerankingTimeMs": 1234,
-#   ...
-# }
-```
-
-**Как работает reranking:**
-1. Система ищет топ-6 кандидатов по embedding similarity (ragTopK * 2)
-2. Claude AI оценивает релевантность каждого из 6 кандидатов к запросу (0.0 - 1.0)
-3. Выбираются топ-3 наиболее релевантных документа после reranking (ragTopK)
-4. Эти документы используются для формирования контекста
-
-**Когда использовать reranking:**
-- Сложные вопросы, требующие глубокого понимания контекста
-- Когда важна максимальная точность поиска
-- Когда embedding similarity недостаточно точна
-
-**Когда не использовать reranking:**
-- Простые вопросы с очевидными ключевыми словами
-- Когда важна скорость ответа (reranking добавляет ~1-2 секунды)
-- Когда бюджет API ограничен (reranking требует дополнительных вызовов Claude AI)
-
-#### Управление RAG индексом
-
-```bash
-# Статус RAG системы
+# RAG управление
 curl http://localhost:8080/api/embeddings/rag/status
-# Ответ: {
-#   "enabled": true,
-#   "documentsCount": 5,
-#   "chunksCount": 75,
-#   "storageDirectory": "embeddings_output",
-#   "ollamaAvailable": true,
-#   "documents": [
-#     {
-#       "fileName": "book_embeddings.json",
-#       "chunksCount": 15,
-#       "timestamp": "2025-11-25 18:00:00"
-#     }
-#   ]
-# }
-
-# Перезагрузить индекс (загрузить все документы из embeddings_output)
 curl -X POST http://localhost:8080/api/embeddings/rag/reload
+curl -X POST http://localhost:8080/api/embeddings/rag/search -d '{"query": "...", "topK": 5}'
+curl -X DELETE http://localhost:8080/api/embeddings/rag/documents/{fileName}
 
-# Поиск по индексу (без использования Claude AI)
-curl -X POST http://localhost:8080/api/embeddings/rag/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "главный герой",
-    "topK": 5,
-    "minSimilarity": 0.5
-  }'
-# Ответ: {
-#   "query": "главный герой",
-#   "totalFound": 5,
-#   "results": [
-#     {
-#       "fileName": "book_embeddings.json",
-#       "chunkId": 3,
-#       "text": "...",
-#       "similarity": 0.87,
-#       "wordCount": 150,
-#       "estimatedTokens": 200
-#     }
-#   ]
-# }
-
-# Удалить документ из индекса
-curl -X DELETE http://localhost:8080/api/embeddings/rag/documents/book_embeddings.json
+# Статус Ollama
+curl http://localhost:8080/api/embeddings/status
 ```
 
-#### Пример работы RAG
+### Swagger UI
+- **Swagger UI**: http://localhost:8080/swagger
+- **OpenAPI Spec**: http://localhost:8080/openapi
 
-```bash
-# 1. Подготовить документ (векторизовать книгу)
-curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
-  -F "file=@war_and_peace.txt"
-
-# 2. Задать вопрос с использованием RAG
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Кто такой Пьер Безухов и какова его роль в романе?",
-    "useRAG": true,
-    "ragTopK": 5,
-    "ragMinSimilarity": 0.6
-  }'
-
-# Claude AI получит контекст:
-# - 5 наиболее релевантных чанков из книги
-# - Сформирует ответ на основе найденного контекста
-# - Укажет источники в ответе
-```
-
-**Преимущества RAG:**
-- Актуальная информация: используйте собственные документы как источник знаний
-- Точность: ответы основаны на конкретных документах, а не на общих знаниях модели
-- Прозрачность: видно, какие документы использовались для ответа
-- Масштабируемость: легко добавлять новые документы без переобучения модели
-
-## Architecture Overview
+## Architecture
 
 ### Request Flow
-1. HTTP запрос → ChatRoutes (routes/)
-2. ChatRoutes → ConversationHistoryService (получить/создать сессию)
-3. ChatRoutes → ConversationHistoryService (добавить сообщение пользователя) → FileStorageService (автосохранение)
-4. ChatRoutes → ConversationHistoryService (проверка необходимости сжатия)
-5. Если нужно сжатие → ClaudeService.createSummary() → ConversationHistoryService.compressHistory() → FileStorageService
-6. ChatRoutes → ClaudeService.sendMessage() с полной историей
-7. ClaudeService → Anthropic API (через Ktor HTTP Client)
-8. Ответ от Claude → ConversationHistoryService (добавить ответ ассистента) → FileStorageService (автосохранение)
-9. Если новая сессия → ClaudeService.generateConversationTitle() → ConversationHistoryService.setConversationTitle() → FileStorageService
-10. ChatResponse DTO (с sessionId) → JSON → клиент
+1. HTTP → ChatRoutes → ConversationHistoryService (сессия)
+2. → ClaudeService.sendMessage() → Anthropic API
+3. → ConversationHistoryService (сохранение) → FileStorageService
+4. → ChatResponse → клиент
 
 ### Key Components
 
-**Application.kt** - Entry point, инициализирует:
-- HTTP Client (CIO engine) для запросов к Anthropic и Ollama
-- ClaudeService с конфигурацией из application.conf
-- FileStorageService (директория: `chat_sessions/`)
-- ConversationHistoryService (порог сжатия = 3 пары сообщений, автосохранение через FileStorageService)
-- TaskStorageService (директория: `scheduled_tasks/`)
-- SchedulerService (управление и выполнение запланированных задач)
-- MCPService для работы с Model Context Protocol
-- OllamaService для векторизации текста через локальный Ollama (nomic-embed-text)
-- Plugins (Serialization, CORS, StatusPages, Routing)
-
-**ClaudeService** - Инкапсулирует логику работы с Anthropic API:
-- Формирует запросы в формате Claude Messages API с поддержкой истории
-- Поддерживает динамический выбор модели (дефолтная из конфигурации → переопределение в запросе)
-- Поддерживает системные промпты (встроенный JSON формат → env переменная → переопределение в запросе)
-- Дефолтный промпт: возвращает все ответы в JSON формате {question, answer, tags}
-- Парсит JSON ответ и извлекает только поле `answer` для пользователя (с fallback на полный текст при ошибке парсинга)
-- Измеряет время выполнения запросов и собирает статистику по токенам
-- Обрабатывает ошибки и логирует usage statistics
-- Возвращает упрощенные ChatResponse объекты с информацией об использованной модели, токенах и времени ответа
-- **createSummary()** - создает краткое резюме истории для сжатия
-- **generateConversationTitle()** - генерирует название диалога на основе первого сообщения пользователя
-
-**FileStorageService** - Персистентное хранилище диалогов:
-- Сохранение/загрузка диалогов в/из JSON файлов
-- Каждый диалог в отдельном файле: `{sessionId}.json`
-- Автоматическая загрузка всех диалогов при инициализации
-- Поддержка операций: save, load, loadAll, delete, exists, getAllSessionIds
-- Thread-safe операции с файловой системой
-
-**ConversationHistoryService** - Управление историями диалогов:
-- Hybrid хранилище: in-memory (ConcurrentHashMap для thread-safety) + персистентное (через FileStorageService)
-- Автоматическая загрузка существующих диалогов из файлов при старте
-- Создание и получение сессий по sessionId
-- Добавление сообщений пользователя и ассистента с автосохранением
-- Установка названия диалога с автосохранением
-- Проверка необходимости сжатия (порог = 3 пары по умолчанию)
-- Автоматическое сжатие истории: каждые N пар → summary с автосохранением
-- Конвертация истории в формат Claude Messages API
-- Очистка старых сессий (cleanup по таймауту)
-
-**TaskStorageService** - Персистентное хранилище задач и выполнений:
-- Сохранение/загрузка задач и выполнений в/из JSON файлов
-- Хранение в директории `scheduled_tasks/`: tasks/ и executions/
-- Каждая задача в отдельном файле: `{taskId}.json`
-- Каждое выполнение в отдельном файле: `{taskId}/{executionId}.json`
-- Автоматическая загрузка всех задач при инициализации
-- Поддержка операций: saveTask, loadTask, loadAllTasks, deleteTask, saveExecution, loadExecutions, deleteExecutions
-- Thread-safe операции с файловой системой
-
-**SchedulerService** - Планировщик и выполнение задач:
-- In-memory управление задачами через ConcurrentHashMap (thread-safe)
-- Автоматическая загрузка задач из TaskStorageService при старте
-- Планирование задач с использованием Kotlin coroutines (CoroutineScope + Dispatchers.Default)
-- Вычисление следующего времени выполнения для ONCE/DAILY/WEEKLY задач
-- Автоматическое выполнение задач в заданное время:
-  - Создание/использование сессии диалога (через ConversationHistoryService)
-  - Отправка вопроса в Claude AI (через ClaudeService)
-  - Сохранение результата в историю диалога
-  - Запись информации о выполнении (через TaskStorageService)
-- Автоматическое перепланирование периодических задач (DAILY, WEEKLY)
-- Обработка ошибок выполнения с сохранением информации об ошибках
-- CRUD операции: createTask, updateTask, deleteTask, getTask, getAllTasks, getExecutions
-- Graceful shutdown через отмену coroutine scope
-
-**MCPService** - Управление подключением к MCP серверам:
-- Создание и управление MCP клиентами (Model Context Protocol Kotlin SDK)
-- Подключение к MCP серверам через WebSocket транспорт
-- Получение списка доступных инструментов (listTools)
-- Вызов инструментов с передачей параметров (callTool)
-- Thread-safe управление подключением через Mutex
-- Автоматическая конвертация схем инструментов для сериализации
-
-**OllamaService** - Сервис для векторизации текста:
-- Взаимодействие с локальным Ollama сервером через HTTP API
-- Получение embeddings для одиночных текстов (getEmbedding)
-- Батчевая обработка множественных текстов (getBatchEmbeddings)
-- Проверка доступности Ollama сервера (checkStatus)
-- Использование модели nomic-embed-text (768-мерные векторы)
-- Измерение времени обработки запросов
-- Обработка ошибок подключения и API
-
-**Plugins** - Модульная конфигурация Ktor:
-- Serialization: kotlinx.serialization для JSON
-- HTTP: CORS для кросс-доменных запросов
-- StatusPages: глобальная обработка исключений
-- Routing: регистрация всех routes (ChatRoutes, MCPRoutes, TaskRoutes, EmbeddingRoutes)
+| Компонент | Назначение |
+|-----------|------------|
+| Application.kt | Entry point, инициализация сервисов |
+| ClaudeService | Anthropic API, history compression, title generation |
+| ConversationHistoryService | Управление сессиями, in-memory + persistent |
+| FileStorageService | Сохранение диалогов в JSON (chat_sessions/) |
+| TaskStorageService | Сохранение задач (scheduled_tasks/) |
+| SchedulerService | Планировщик задач на coroutines |
+| MCPService | MCP клиент, подключение и вызов инструментов |
+| OllamaService | Embeddings через Ollama |
+| RAGService | RAG индекс и поиск |
 
 ### Data Models
-- `ChatRequest/ChatResponse` - публичные API DTOs
-  - `ChatRequest` содержит `message`, опциональный `sessionId`, опциональный `systemPrompt` и опциональный `model`
-  - `ChatResponse` содержит `response`, `sessionId`, `model`, `inputTokens`, `outputTokens`, `totalTokens`, `responseTimeMs`, `historyCompressed`
-  - `sessionId` используется для продолжения диалога
-  - `model` позволяет выбрать конкретную модель Claude для запроса
-  - `historyCompressed` показывает, была ли сжата история в этом запросе
-- `ConversationHistory.kt` - модели для хранения истории
-  - `ConversationHistory` - история одного диалога с sessionId, title и списком сообщений (Serializable для JSON)
-  - `HistoryMessage` - одно сообщение с типом (USER/ASSISTANT/SUMMARY) и контентом (Serializable)
-  - `MessageType` - enum типов сообщений (Serializable)
-  - Все модели сериализуемы для сохранения в JSON файлы
-- `ClaudeModels.kt` - enum с доступными моделями Claude (Haiku, Sonnet 4)
-- `ClaudeApiModels.kt` - внутренние модели Anthropic API (messages, content, usage)
-  - `ClaudeApiRequest` поддерживает опциональное поле `system` для системных промптов
-  - `ClaudeJsonResponse` - модель для парсинга JSON ответов от Claude (question, answer, tags)
-- `MCPModels.kt` - модели для MCP интеграции
-  - `MCPConnectionRequest` - запрос для подключения к MCP серверу (serverUrl, transportType)
-  - `MCPToolInfo` - информация об инструменте (name, description, inputSchema)
-  - `MCPToolsResponse` - ответ со списком инструментов
-  - `MCPCallToolRequest/Response` - запрос/ответ для вызова инструмента
-  - `MCPConnectionStatus` - статус подключения к MCP серверу
-- `ScheduledTask.kt` - модели для планировщика задач
-  - `ScheduledTask` - запланированная задача с id, name, question, schedule, enabled, createdAt, nextExecutionAt (Serializable)
-  - `TaskSchedule` - расписание выполнения с type (ONCE/DAILY/WEEKLY) и параметрами времени (Serializable)
-  - `ScheduleType` - enum типов расписания (ONCE, DAILY, WEEKLY)
-  - `TaskExecution` - результат выполнения задачи с question, response, success, errorMessage, executedAt (Serializable)
-  - `LocalDateTimeSerializer` - кастомный сериализатор для LocalDateTime в JSON (ISO-8601 формат)
-- `TaskModels.kt` - DTOs для API задач
-  - `CreateTaskRequest` - запрос на создание задачи (name, question, sessionId, schedule)
-  - `UpdateTaskRequest` - запрос на обновление задачи (все поля опциональны)
-  - `TaskListResponse` - ответ со списком задач
-  - `TaskExecutionListResponse` - ответ со списком выполнений задачи
-- `OllamaModels.kt` - модели для векторизации текста через Ollama
-  - `OllamaEmbeddingRequest` - внутренний запрос к Ollama API (model, prompt)
-  - `OllamaEmbeddingResponse` - внутренний ответ от Ollama API (embedding)
-  - `EmbeddingRequest` - публичный API запрос для векторизации (text)
-  - `EmbeddingResponse` - публичный API ответ с вектором (embedding, model, dimension, processingTimeMs)
-  - `BatchEmbeddingRequest` - запрос для векторизации нескольких текстов (texts)
-  - `BatchEmbeddingResponse` - ответ с векторами для нескольких текстов (embeddings, model, dimension, count, processingTimeMs)
-  - `OllamaStatus` - статус подключения к Ollama (available, url, model, error)
+
+**API DTOs:**
+- `ChatRequest/ChatResponse` - Chat API
+- `MCPModels.kt` - MCP интеграция
+- `TaskModels.kt` - Scheduled Tasks API
+- `OllamaModels.kt` - Embeddings API
+
+**Internal:**
+- `ConversationHistory.kt` - история диалогов (sessionId, title, messages)
+- `ScheduledTask.kt` - задачи и выполнения
+- `ClaudeApiModels.kt` - Anthropic API формат
 
 ### Design Decisions
-- **Stateful sessions** - hybrid хранилище (in-memory + персистентное) истории диалогов с автоматическим сжатием
-- **Persistent storage** - автоматическое сохранение всех изменений в JSON файлы для сохранения между перезапусками
-- **Automatic history compression** - каждые 3 пары сообщений автоматически заменяются на AI-generated summary
-- **AI-generated titles** - автоматическое создание понятных названий диалогов с помощью Claude AI
-- **Coroutine-based scheduler** - использование Kotlin coroutines для асинхронного выполнения запланированных задач без блокировки потоков
-- **Task persistence** - все задачи и выполнения сохраняются в JSON для восстановления после перезапуска
-- **Flexible scheduling** - поддержка одноразовых (ONCE), ежедневных (DAILY) и еженедельных (WEEKLY) задач
-- **Single responsibility** - ClaudeService для AI интеграции, ConversationHistoryService для управления историями, FileStorageService для персистентности диалогов, TaskStorageService для персистентности задач, SchedulerService для планирования, OllamaService для векторизации текста
-- **Configuration over code** - все настройки в application.conf
-- **Defensive error handling** - все исключения логируются и возвращают понятные сообщения
-- **Thread-safe** - ConcurrentHashMap для безопасного доступа к сессиям и задачам из разных потоков
-- **Local embeddings** - использование локального Ollama для векторизации без внешних API вызовов и с полным контролем над данными
+- **Hybrid storage**: in-memory (ConcurrentHashMap) + JSON files для persistence
+- **Auto compression**: каждые 3 пары сообщений → AI summary
+- **Coroutine scheduler**: async task execution
+- **Thread-safe**: ConcurrentHashMap, Mutex для MCP
+- **Local embeddings**: Ollama для контроля данных
 
-## Code Review через MCP Filesystem Server + RAG
+## Features
 
-Система поддерживает полноценный code review с использованием MCP Filesystem Server и RAG:
+### История диалогов
+- Автосохранение в `chat_sessions/{sessionId}.json`
+- Сжатие истории каждые 3 пары сообщений
+- Автогенерация названий через Claude AI
+- Восстановление при перезапуске
 
-### Возможности для Code Review
+### RAG System
+1. Векторизация документов → `embeddings_output/`
+2. При `useRAG: true` запрос векторизуется
+3. Поиск похожих чанков (cosine similarity)
+4. Добавление контекста в системный промпт
+5. Опциональный reranking через Claude AI
 
-1. **Анализ изменений через git diff** - Claude AI может получить diff изменений и проанализировать их
-2. **Чтение файлов проекта** - доступ к любым файлам проекта для понимания контекста
-3. **История коммитов** - просмотр истории изменений для понимания эволюции кода
-4. **RAG на основе документации** - использование векторизованной документации для проверки соответствия best practices
-
-### Пример: Автоматический Code Review
-
-```bash
-# 1. Терминал 1: Запустить MCP Filesystem Server
-./gradlew :mcp-filesystem-server:run
-
-# 2. Терминал 2: Запустить основной сервер
-export ANTHROPIC_API_KEY="your-api-key"
-./gradlew :server:run
-
-# 3. Терминал 3: Подключиться к Filesystem MCP
-curl -X POST http://localhost:8080/api/mcp/connect \
-  -H "Content-Type: application/json" \
-  -d '{"serverUrl": "ws://localhost:3002/mcp", "transportType": "websocket"}'
-
-# 4. (Опционально) Векторизовать документацию для RAG
-curl -X POST http://localhost:8080/api/embeddings/vectorize-file \
-  -F "file=@docs/coding-standards.md" \
-  -F "saveToFile=true"
-
-# 5. Задать вопрос о code review с использованием RAG
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Проанализируй текущие изменения в проекте. Проверь git diff, найди потенциальные проблемы, баги и дай рекомендации по улучшению кода.",
-    "useRAG": true,
-    "ragTopK": 5
-  }'
-```
-
-### Как работает Code Review
-
-1. **Claude AI получает вопрос** о code review
-2. **Автоматически вызывает MCP инструменты:**
-   - `get_git_status()` - проверяет, какие файлы изменены
-   - `get_git_diff()` - получает детальные изменения
-   - `read_file(path)` - читает измененные файлы для понимания контекста
-   - `get_git_log()` - смотрит историю изменений (при необходимости)
-3. **RAG добавляет контекст:**
-   - Ищет релевантные разделы документации
-   - Находит best practices из стандартов кодирования
-4. **Claude AI анализирует:**
-   - Потенциальные баги и уязвимости
-   - Соответствие стандартам кодирования
-   - Performance issues
-   - Code smells и anti-patterns
-   - Рекомендации по улучшению
-5. **Формирует детальный отчет** с конкретными рекомендациями
-
-### Примеры вопросов для Code Review
-
-```bash
-# Общий review всех изменений
-"Сделай code review текущих изменений. Что можно улучшить?"
-
-# Review конкретного файла
-"Проверь изменения в файле server/Application.kt. Есть ли потенциальные проблемы?"
-
-# Проверка на security issues
-"Проанализируй diff на наличие security уязвимостей (SQL injection, XSS, etc)"
-
-# Проверка соответствия стандартам
-"Проверь, соответствуют ли изменения нашим coding standards из документации"
-
-# Анализ конкретного коммита
-"Проанализируй коммит 5364a66 и найди возможные баги"
-```
-
-### Интеграция с CI/CD
-
-MCP Filesystem Server можно интегрировать в CI/CD pipeline для автоматического code review:
-
-```bash
-# В GitHub Actions / GitLab CI
-- name: Start MCP Filesystem Server
-  run: ./gradlew :mcp-filesystem-server:run &
-
-- name: Start AI Chat Server
-  run: ./gradlew :server:run &
-
-- name: Run Code Review
-  run: |
-    curl -X POST http://localhost:8080/api/mcp/connect \
-      -H "Content-Type: application/json" \
-      -d '{"serverUrl": "ws://localhost:3002/mcp", "transportType": "websocket"}'
-
-    curl -X POST http://localhost:8080/api/chat \
-      -H "Content-Type: application/json" \
-      -d '{"message": "Проведи code review изменений в текущей ветке"}' \
-      > review_report.json
-```
+### Code Review через MCP
+Claude AI автоматически использует MCP инструменты:
+- `get_git_status()` / `get_git_diff()` - анализ изменений
+- `read_file()` - контекст файлов
+- RAG - проверка соответствия стандартам
 
 ## External Dependencies
 - **Anthropic Claude API** (requires API key)
-- **Ktor 3.0.3** - Server (Netty engine), Client (CIO engine), WebSockets
-- **Kotlin 2.1.0** - Language version (required for MCP SDK)
-- **MCP Kotlin SDK 0.6.0** - Model Context Protocol официальная реализация от Anthropic & JetBrains
-- **kotlinx.serialization** - JSON сериализация для всех DTO
-- **Logback** - Логирование
-- **Ollama** (optional) - Локальный сервер для векторизации текста (nomic-embed-text модель)
+- **Ktor 3.0.3** - Server (Netty), Client (CIO), WebSockets
+- **Kotlin 2.1.0**
+- **MCP Kotlin SDK 0.6.0**
+- **kotlinx.serialization**
+- **Logback**
+- **Ollama** (optional) - nomic-embed-text
