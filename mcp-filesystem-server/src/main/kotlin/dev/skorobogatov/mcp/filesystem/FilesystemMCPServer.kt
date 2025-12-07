@@ -26,6 +26,14 @@ class FilesystemMCPServer(
 ) {
     private val logger = LoggerFactory.getLogger(FilesystemMCPServer::class.java)
 
+    // Директория для созданных веб-приложений (только сюда разрешена запись)
+    private val appsDirectory: File by lazy {
+        File(projectRoot, "server/src/main/resources/static/apps").also {
+            if (!it.exists()) it.mkdirs()
+            logger.info("Apps directory: ${it.absolutePath}")
+        }
+    }
+
     /**
      * Запуск MCP сервера
      */
@@ -184,6 +192,75 @@ class FilesystemMCPServer(
                             )
                         ) { request ->
                             handleGetGitCommit(request)
+                        }
+
+                        // ========== ИНСТРУМЕНТЫ ДЛЯ СОЗДАНИЯ ВЕБ-ПРИЛОЖЕНИЙ ==========
+
+                        // Регистрируем инструмент для создания директории в apps/
+                        mcpServer.addTool(
+                            name = "create_directory",
+                            description = "Создать директорию для веб-приложения в apps/. Используй для создания папки нового приложения.",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("path") {
+                                        put("type", "string")
+                                        put("description", "Путь к директории относительно apps/ (например: 'game-2048' или 'my-app/assets')")
+                                    }
+                                },
+                                required = listOf("path")
+                            )
+                        ) { request ->
+                            handleCreateDirectory(request)
+                        }
+
+                        // Регистрируем инструмент для записи файла в apps/
+                        mcpServer.addTool(
+                            name = "write_file",
+                            description = "Создать или перезаписать файл веб-приложения в apps/. Используй для создания HTML, CSS, JavaScript файлов.",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("path") {
+                                        put("type", "string")
+                                        put("description", "Путь к файлу относительно apps/ (например: 'game-2048/index.html')")
+                                    }
+                                    putJsonObject("content") {
+                                        put("type", "string")
+                                        put("description", "Содержимое файла (HTML, CSS, JavaScript код)")
+                                    }
+                                },
+                                required = listOf("path", "content")
+                            )
+                        ) { request ->
+                            handleWriteFile(request)
+                        }
+
+                        // Регистрируем инструмент для удаления файла/директории в apps/
+                        mcpServer.addTool(
+                            name = "delete_path",
+                            description = "Удалить файл или директорию из apps/",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {
+                                    putJsonObject("path") {
+                                        put("type", "string")
+                                        put("description", "Путь к файлу или директории относительно apps/")
+                                    }
+                                },
+                                required = listOf("path")
+                            )
+                        ) { request ->
+                            handleDeletePath(request)
+                        }
+
+                        // Регистрируем инструмент для получения списка приложений
+                        mcpServer.addTool(
+                            name = "list_apps",
+                            description = "Получить список всех созданных веб-приложений в apps/",
+                            inputSchema = Tool.Input(
+                                properties = buildJsonObject {},
+                                required = emptyList()
+                            )
+                        ) { request ->
+                            handleListApps(request)
                         }
 
                         // Создаем WebSocket transport
@@ -812,6 +889,259 @@ class FilesystemMCPServer(
                         text = "Ошибка при получении информации о коммите: ${e.message}"
                     )
                 ),
+                isError = true
+            )
+        }
+    }
+
+    // ========== ОБРАБОТЧИКИ ДЛЯ СОЗДАНИЯ ВЕБ-ПРИЛОЖЕНИЙ ==========
+
+    /**
+     * Проверка безопасности: путь должен быть внутри apps/
+     */
+    private fun isPathSafeForApps(path: String): Boolean {
+        val targetFile = File(appsDirectory, path).canonicalFile
+        return targetFile.canonicalPath.startsWith(appsDirectory.canonicalPath)
+    }
+
+    /**
+     * Валидация имени приложения (только alphanumeric, дефисы и подчеркивания)
+     */
+    private fun isValidAppName(name: String): Boolean {
+        return name.matches(Regex("^[a-zA-Z0-9_-]+$"))
+    }
+
+    /**
+     * Обработка создания директории в apps/
+     */
+    private fun handleCreateDirectory(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val path = arguments?.get("path")?.jsonPrimitive?.content ?: ""
+
+            if (path.isBlank()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: не указан путь к директории")),
+                    isError = true
+                )
+            }
+
+            // Проверка безопасности
+            if (!isPathSafeForApps(path)) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: запись разрешена только в директорию apps/")),
+                    isError = true
+                )
+            }
+
+            // Проверка имени корневой директории приложения
+            val appName = path.split("/").first()
+            if (!isValidAppName(appName)) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: имя приложения может содержать только буквы, цифры, дефисы и подчеркивания")),
+                    isError = true
+                )
+            }
+
+            val targetDir = File(appsDirectory, path)
+
+            if (targetDir.exists()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "📁 Директория '$path' уже существует"))
+                )
+            }
+
+            targetDir.mkdirs()
+            logger.info("Created directory: ${targetDir.absolutePath}")
+
+            CallToolResult(
+                content = listOf(TextContent(text = "✅ Директория создана: apps/$path"))
+            )
+        } catch (e: Exception) {
+            logger.error("Error creating directory: ${e.message}", e)
+            CallToolResult(
+                content = listOf(TextContent(text = "Ошибка при создании директории: ${e.message}")),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка записи файла в apps/
+     */
+    private fun handleWriteFile(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val path = arguments?.get("path")?.jsonPrimitive?.content ?: ""
+            val content = arguments?.get("content")?.jsonPrimitive?.content ?: ""
+
+            if (path.isBlank()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: не указан путь к файлу")),
+                    isError = true
+                )
+            }
+
+            // Проверка безопасности
+            if (!isPathSafeForApps(path)) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: запись разрешена только в директорию apps/")),
+                    isError = true
+                )
+            }
+
+            // Проверка расширения файла (только веб-файлы)
+            val allowedExtensions = listOf("html", "htm", "css", "js", "ts", "json", "svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "txt", "md")
+            val extension = path.substringAfterLast('.', "").lowercase()
+            if (extension !in allowedExtensions) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: разрешены только веб-файлы (${allowedExtensions.joinToString(", ")})")),
+                    isError = true
+                )
+            }
+
+            // Проверка имени корневой директории приложения
+            val appName = path.split("/").first()
+            if (!isValidAppName(appName)) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: имя приложения может содержать только буквы, цифры, дефисы и подчеркивания")),
+                    isError = true
+                )
+            }
+
+            // Лимит размера файла (1MB)
+            if (content.length > 1_000_000) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: размер файла не должен превышать 1MB")),
+                    isError = true
+                )
+            }
+
+            val targetFile = File(appsDirectory, path)
+
+            // Создаем родительские директории если нужно
+            targetFile.parentFile?.mkdirs()
+
+            val isNew = !targetFile.exists()
+            targetFile.writeText(content)
+
+            logger.info("${if (isNew) "Created" else "Updated"} file: ${targetFile.absolutePath} (${content.length} bytes)")
+
+            val action = if (isNew) "создан" else "обновлен"
+            CallToolResult(
+                content = listOf(TextContent(text = "✅ Файл $action: apps/$path (${formatFileSize(content.length.toLong())})"))
+            )
+        } catch (e: Exception) {
+            logger.error("Error writing file: ${e.message}", e)
+            CallToolResult(
+                content = listOf(TextContent(text = "Ошибка при записи файла: ${e.message}")),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка удаления файла/директории из apps/
+     */
+    private fun handleDeletePath(request: CallToolRequest): CallToolResult {
+        return try {
+            val arguments = request.arguments as? JsonObject
+            val path = arguments?.get("path")?.jsonPrimitive?.content ?: ""
+
+            if (path.isBlank()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: не указан путь")),
+                    isError = true
+                )
+            }
+
+            // Проверка безопасности
+            if (!isPathSafeForApps(path)) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: удаление разрешено только из директории apps/")),
+                    isError = true
+                )
+            }
+
+            val targetPath = File(appsDirectory, path)
+
+            if (!targetPath.exists()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: путь '$path' не найден")),
+                    isError = true
+                )
+            }
+
+            val deleted = if (targetPath.isDirectory) {
+                targetPath.deleteRecursively()
+            } else {
+                targetPath.delete()
+            }
+
+            if (deleted) {
+                logger.info("Deleted: ${targetPath.absolutePath}")
+                CallToolResult(
+                    content = listOf(TextContent(text = "✅ Удалено: apps/$path"))
+                )
+            } else {
+                CallToolResult(
+                    content = listOf(TextContent(text = "Ошибка: не удалось удалить '$path'")),
+                    isError = true
+                )
+            }
+        } catch (e: Exception) {
+            logger.error("Error deleting path: ${e.message}", e)
+            CallToolResult(
+                content = listOf(TextContent(text = "Ошибка при удалении: ${e.message}")),
+                isError = true
+            )
+        }
+    }
+
+    /**
+     * Обработка получения списка приложений
+     */
+    private fun handleListApps(request: CallToolRequest): CallToolResult {
+        return try {
+            val apps = appsDirectory.listFiles()
+                ?.filter { it.isDirectory }
+                ?.map { dir ->
+                    val files = dir.listFiles()?.map { it.name } ?: emptyList()
+                    val hasIndex = files.any { it.equals("index.html", ignoreCase = true) }
+                    Triple(dir.name, files, hasIndex)
+                }
+                ?.sortedBy { it.first }
+                ?: emptyList()
+
+            if (apps.isEmpty()) {
+                return CallToolResult(
+                    content = listOf(TextContent(text = "📭 Нет созданных приложений в apps/"))
+                )
+            }
+
+            val response = buildString {
+                appendLine("📱 Созданные веб-приложения (${apps.size}):")
+                appendLine()
+                apps.forEach { (name, files, hasIndex) ->
+                    val status = if (hasIndex) "✅" else "⚠️"
+                    appendLine("$status $name/")
+                    appendLine("   Файлы: ${files.joinToString(", ")}")
+                    if (hasIndex) {
+                        appendLine("   URL: /apps/$name/")
+                    } else {
+                        appendLine("   ⚠️ Отсутствует index.html")
+                    }
+                    appendLine()
+                }
+            }
+
+            CallToolResult(
+                content = listOf(TextContent(text = response))
+            )
+        } catch (e: Exception) {
+            logger.error("Error listing apps: ${e.message}", e)
+            CallToolResult(
+                content = listOf(TextContent(text = "Ошибка при получении списка приложений: ${e.message}")),
                 isError = true
             )
         }

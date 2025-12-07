@@ -327,6 +327,9 @@ class ChatApp {
             case '/review':
                 await this.handleReviewCommand(args);
                 break;
+            case '/dev':
+                await this.handleDevCommand(args);
+                break;
             case '/help':
                 this.showHelpMessage();
                 break;
@@ -338,6 +341,129 @@ class ChatApp {
                 this.setInputState(true);
                 this.messageInput.focus();
         }
+    }
+
+    /**
+     * Обработка команды /dev для создания веб-приложений
+     */
+    async handleDevCommand(args) {
+        // Disable input while processing
+        this.setInputState(false);
+
+        const fullCommand = '/dev ' + args.join(' ');
+
+        // Show loading indicator
+        this.showLoadingIndicator('Создаю приложение...');
+
+        try {
+            // Отправляем команду на сервер
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: fullCommand,
+                    sessionId: this.sessionId,
+                    model: 'claude-sonnet-4-20250514' // Всегда Sonnet для /dev
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to process /dev command');
+            }
+
+            const data = await response.json();
+            this.sessionId = data.sessionId;
+
+            // Скрываем индикатор загрузки
+            this.hideLoadingIndicator();
+
+            // Парсим ответ и добавляем кнопки
+            const responseHtml = this.formatDevResponse(data.response);
+            this.addMessage(responseHtml, 'assistant', true);
+
+            // Update title if new session
+            if (data.conversationTitle) {
+                this.chatTitle.textContent = data.conversationTitle;
+            }
+
+            this.updateHistoryButton();
+
+        } catch (error) {
+            console.error('Error processing /dev command:', error);
+            this.hideLoadingIndicator();
+            this.addMessage(`Ошибка: ${error.message}`, 'error');
+        } finally {
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
+    }
+
+    /**
+     * Форматирование ответа /dev с кнопками
+     */
+    formatDevResponse(response) {
+        // Ищем URL приложения в ответе
+        const urlMatch = response.match(/URL:\s*\/apps\/([a-zA-Z0-9_-]+)\/?/);
+        const appName = urlMatch ? urlMatch[1] : null;
+
+        let html = this.formatMessage(response);
+
+        // Добавляем кнопки если нашли имя приложения
+        if (appName) {
+            html += `
+                <div class="dev-actions">
+                    <button class="dev-button dev-button-open" onclick="window.open('/apps/${appName}/', '_blank')">
+                        ▶️ Открыть приложение
+                    </button>
+                    <button class="dev-button dev-button-preview" onclick="chatApp.showAppPreview('${appName}')">
+                        🖼️ Предпросмотр
+                    </button>
+                </div>
+            `;
+        }
+
+        return html;
+    }
+
+    /**
+     * Показать предпросмотр приложения в модальном окне
+     */
+    showAppPreview(appName) {
+        // Создаем модальное окно с iframe
+        const modal = document.createElement('div');
+        modal.className = 'app-preview-modal';
+        modal.innerHTML = `
+            <div class="app-preview-content">
+                <div class="app-preview-header">
+                    <h3>${appName}</h3>
+                    <div class="app-preview-actions">
+                        <button onclick="window.open('/apps/${appName}/', '_blank')">↗️ Новая вкладка</button>
+                        <button onclick="this.closest('.app-preview-modal').remove()">✕</button>
+                    </div>
+                </div>
+                <iframe src="/apps/${appName}/" frameborder="0"></iframe>
+            </div>
+        `;
+
+        // Закрытие по клику на фон
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Закрытие по Escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        document.body.appendChild(modal);
     }
 
     async handleReviewCommand(args) {
@@ -563,6 +689,21 @@ class ChatApp {
     showHelpMessage() {
         const helpText = `Доступные команды:
 
+/dev [описание] - Создать веб-приложение или игру
+  Claude AI сгенерирует HTML/CSS/JS код на основе описания
+
+  Подкоманды:
+  • /dev [описание] - создать новое приложение
+  • /dev edit [имя] [изменения] - изменить существующее приложение
+  • /dev list - показать список приложений
+  • /dev delete [имя] - удалить приложение
+
+  Примеры:
+  • /dev Сделай игру 2048 на JS
+  • /dev Создай калькулятор с красивым дизайном
+  • /dev edit igra_2048 Добавь анимации при движении плиток
+  • /dev list
+
 /review [ветка/коммит] - Выполнить code review
   Без параметров: review текущих изменений (git diff)
   С параметром: review указанной ветки или коммита
@@ -619,7 +760,7 @@ class ChatApp {
         return data;
     }
 
-    addMessage(text, type, model = null, stats = null, scrollToBottom = true) {
+    addMessage(text, type, modelOrHtml = null, stats = null, scrollToBottom = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
@@ -628,12 +769,22 @@ class ChatApp {
 
         const label = type === 'user' ? 'Вы' : type === 'error' ? 'Ошибка' : 'Assistant';
         let modelInfo = '';
-        if (model && type === 'assistant') {
-            const modelName = this.getModelDisplayName(model);
-            modelInfo = ` <span class="model-badge">${modelName}</span>`;
+        let formattedText;
+
+        // Check if modelOrHtml is boolean (true = HTML content) or string (model name)
+        if (modelOrHtml === true) {
+            // Text is already HTML formatted
+            formattedText = text;
+        } else {
+            // Regular text - escape and format
+            if (modelOrHtml && type === 'assistant' && typeof modelOrHtml === 'string') {
+                const modelName = this.getModelDisplayName(modelOrHtml);
+                modelInfo = ` <span class="model-badge">${modelName}</span>`;
+            }
+            // Preserve line breaks by converting \n to <br>
+            formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
         }
-        // Preserve line breaks by converting \n to <br>
-        const formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
+
         contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${formattedText}`;
 
         messageDiv.appendChild(contentDiv);
@@ -700,6 +851,34 @@ class ChatApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Форматирование текста с поддержкой базового markdown
+     */
+    formatMessage(text) {
+        let html = this.escapeHtml(text);
+
+        // Заголовки (## и ###)
+        html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+
+        // Жирный текст (**text**)
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+        // Курсив (*text*)
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+        // Код (`code`)
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Списки (- item)
+        html = html.replace(/^- (.+)$/gm, '• $1');
+
+        // Переносы строк
+        html = html.replace(/\n/g, '<br>');
+
+        return html;
     }
 
     showLoadingIndicator() {
@@ -1386,9 +1565,164 @@ class TaskManager {
     }
 }
 
+// Apps Manager Class
+class AppsManager {
+    constructor() {
+        this.appsGrid = document.getElementById('appsGrid');
+        this.refreshButton = document.getElementById('refreshAppsButton');
+        this.apps = [];
+
+        this.init();
+    }
+
+    init() {
+        if (this.refreshButton) {
+            this.refreshButton.addEventListener('click', () => this.loadApps());
+        }
+
+        // Load apps when tab is shown
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                if (button.dataset.tab === 'apps') {
+                    this.loadApps();
+                }
+            });
+        });
+
+        // Initial load
+        this.loadApps();
+    }
+
+    async loadApps() {
+        try {
+            this.appsGrid.innerHTML = '<div class="loading">Загрузка приложений...</div>';
+
+            const response = await fetch('/api/apps');
+            if (!response.ok) {
+                throw new Error('Failed to load apps');
+            }
+
+            const data = await response.json();
+            this.apps = data.apps || [];
+            this.renderApps();
+        } catch (error) {
+            console.error('Error loading apps:', error);
+            this.appsGrid.innerHTML = `
+                <div class="apps-placeholder">
+                    <p>Ошибка загрузки приложений</p>
+                    <small>${error.message}</small>
+                </div>
+            `;
+        }
+    }
+
+    renderApps() {
+        if (this.apps.length === 0) {
+            this.appsGrid.innerHTML = `
+                <div class="apps-placeholder">
+                    <p>Пока нет созданных приложений</p>
+                    <small>Используйте команду <code>/dev Сделай игру 2048</code> в чате</small>
+                </div>
+            `;
+            return;
+        }
+
+        this.appsGrid.innerHTML = this.apps.map(app => this.renderAppCard(app)).join('');
+
+        // Add event listeners
+        this.apps.forEach(app => {
+            const card = document.querySelector(`[data-app-name="${app.name}"]`);
+            if (card) {
+                const openBtn = card.querySelector('.btn-open');
+                const previewBtn = card.querySelector('.btn-preview');
+                const deleteBtn = card.querySelector('.btn-delete');
+
+                if (openBtn) {
+                    openBtn.addEventListener('click', () => window.open(`/apps/${app.name}/`, '_blank'));
+                }
+                if (previewBtn) {
+                    previewBtn.addEventListener('click', () => this.showPreview(app.name));
+                }
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', () => this.deleteApp(app.name));
+                }
+            }
+        });
+    }
+
+    renderAppCard(app) {
+        const createdDate = app.createdAt
+            ? new Date(app.createdAt).toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            })
+            : 'Неизвестно';
+
+        return `
+            <div class="app-card" data-app-name="${this.escapeHtml(app.name)}">
+                <div class="app-card-preview">
+                    <iframe src="/apps/${this.escapeHtml(app.name)}/" loading="lazy"></iframe>
+                    <div class="app-card-overlay"></div>
+                </div>
+                <div class="app-card-info">
+                    <div class="app-card-name">${this.escapeHtml(app.name)}</div>
+                    <div class="app-card-meta">
+                        ${app.files?.length || 0} файлов • ${createdDate}
+                    </div>
+                    <div class="app-card-actions">
+                        <button class="btn-open">▶️ Открыть</button>
+                        <button class="btn-preview">🖼️ Превью</button>
+                        <button class="btn-delete">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    showPreview(appName) {
+        // Use ChatApp's showAppPreview if available
+        if (window.chatApp && window.chatApp.showAppPreview) {
+            window.chatApp.showAppPreview(appName);
+        } else {
+            // Fallback: open in new tab
+            window.open(`/apps/${appName}/`, '_blank');
+        }
+    }
+
+    async deleteApp(appName) {
+        if (!confirm(`Вы уверены, что хотите удалить приложение "${appName}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/apps/${encodeURIComponent(appName)}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to delete app');
+            }
+
+            // Reload apps list
+            await this.loadApps();
+        } catch (error) {
+            console.error('Error deleting app:', error);
+            alert(`Ошибка удаления приложения: ${error.message}`);
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new ChatApp();
+    window.chatApp = new ChatApp();
     new MCPManager();
     new TaskManager();
+    new AppsManager();
 });

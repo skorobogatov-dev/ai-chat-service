@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра "Пятнашки"</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .moves-counter {
+            font-size: 1.1rem;
+        }
+
+        .timer {
+            font-size: 1.1rem;
+        }
+
+        .puzzle-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-gap: 5px;
+            background: #34495e;
+            padding: 10px;
+            border-radius: 15px;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+            aspect-ratio: 1;
+        }
+
+        .tile {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            border: none;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            user-select: none;
+        }
+
+        .tile:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .tile:active {
+            transform: scale(0.95);
+        }
+
+        .tile.empty {
+            background: transparent;
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .tile.empty:hover {
+            transform: none;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.secondary {
+            background: linear-gradient(45deg, #FF9800, #F57C00);
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+        }
+
+        .btn.secondary:hover {
+            box-shadow: 0 6px 20px rgba(255, 152, 0, 0.4);
+        }
+
+        .win-message {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .win-content {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            animation: bounceIn 0.5s ease-out;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .win-content h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .win-content p {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .game-container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .tile {
+                font-size: 1.2rem;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🧩 Пятнашки</h1>
+        
+        <div class="game-info">
+            <div class="moves-counter">Ходов: <span id="movesCount">0</span></div>
+            <div class="timer">Время: <span id="timeCount">00:00</span></div>
+        </div>
+        
+        <div class="puzzle-grid" id="puzzleGrid"></div>
+        
+        <div class="controls">
+            <button class="btn" onclick="newGame()">🎮 Новая игра</button>
+            <button class="btn secondary" onclick="shufflePuzzle()">🔀 Перемешать</button>
+        </div>
+    </div>
+
+    <div class="win-message" id="winMessage">
+        <div class="win-content">
+            <h2>🎉 Поздравляем!</h2>
+            <p>Вы решили головоломку!</p>
+            <p>Ходов: <span id="finalMoves"></span></p>
+            <p>Время: <span id="finalTime"></span></p>
+            <button class="btn" onclick="closeWinMessage()">Закрыть</button>
+        </div>
+    </div>
+
+    <script>
+        class FifteenPuzzle {
+            constructor() {
+                this.size = 4;
+                this.tiles = [];
+                this.emptyPos = { row: 3, col: 3 };
+                this.moves = 0;
+                this.startTime = null;
+                this.timerInterval = null;
+                this.isGameActive = false;
+                
+                this.initGame();
+            }
+            
+            initGame() {
+                this.createGrid();
+                this.resetGame();
+            }
+            
+            createGrid() {
+                const grid = document.getElementById('puzzleGrid');
+                grid.innerHTML = '';
+                
+                for (let i = 0; i < this.size * this.size; i++) {
+                    const tile = document.createElement('button');
+                    tile.className = 'tile';
+                    tile.addEventListener('click', () => this.moveTile(i));
+                    grid.appendChild(tile);
+                }
+            }
+            
+            resetGame() {
+                // Создаем решенное состояние
+                this.tiles = [];
+                for (let i = 1; i < this.size * this.size; i++) {
+                    this.tiles.push(i);
+                }
+                this.tiles.push(0); // 0 представляет пустую ячейку
+                
+                this.emptyPos = { row: 3, col: 3 };
+                this.moves = 0;
+                this.isGameActive = false;
+                
+                this.updateDisplay();
+                this.updateMoves();
+                this.stopTimer();
+                this.updateTimer();
+            }
+            
+            shufflePuzzle() {
+                // Перемешиваем puzzle правильным способом для обеспечения решаемости
+                const moves = 1000;
+                for (let i = 0; i < moves; i++) {
+                    const neighbors = this.getValidMoves();
+                    if (neighbors.length > 0) {
+                        const randomMove = neighbors[Math.floor(Math.random() * neighbors.length)];
+                        this.moveTileInternal(randomMove, false);
+                    }
+                }
+                
+                this.moves = 0;
+                this.updateMoves();
+                this.isGameActive = true;
+                this.startTimer();
+            }
+            
+            getValidMoves() {
+                const moves = [];
+                const { row, col } = this.emptyPos;
+                
+                // Проверяем соседние ячейки
+                const directions = [
+                    { row: row - 1, col: col }, // вверх
+                    { row: row + 1, col: col }, // вниз
+                    { row: row, col: col - 1 }, // влево
+                    { row: row, col: col + 1 }  // вправо
+                ];
+                
+                directions.forEach(pos => {
+                    if (pos.row >= 0 && pos.row < this.size && 
+                        pos.col >= 0 && pos.col < this.size) {
+                        moves.push(pos.row * this.size + pos.col);
+                    }
+                });
+                
+                return moves;
+            }
+            
+            moveTile(index) {
+                if (!this.isGameActive) return;
+                
+                const row = Math.floor(index / this.size);
+                const col = index % this.size;
+                
+                if (this.isValidMove(row, col)) {
+                    this.moveTileInternal(index, true);
+                    
+                    if (this.checkWin()) {
+                        this.handleWin();
+                    }
+                }
+            }
+            
+            moveTileInternal(index, countMove) {
+                const row = Math.floor(index / this.size);
+                const col = index % this.size;
+                const emptyIndex = this.emptyPos.row * this.size + this.emptyPos.col;
+                
+                // Меняем местами плитку и пустое место
+                [this.tiles[index], this.tiles[emptyIndex]] = [this.tiles[emptyIndex], this.tiles[index]];
+                
+                // Обновляем позицию пустого места
+                this.emptyPos = { row, col };
+                
+                if (countMove) {
+                    this.moves++;
+                    this.updateMoves();
+                }
+                
+                this.updateDisplay();
+            }
+            
+            isValidMove(row, col) {
+                const emptyRow = this.emptyPos.row;
+                const emptyCol = this.emptyPos.col;
+                
+                // Проверяем, является ли ячейка соседней с пустой
+                return (Math.abs(row - emptyRow) === 1 && col === emptyCol) ||
+                       (Math.abs(col - emptyCol) === 1 && row === emptyRow);
+            }
+            
+            updateDisplay() {
+                const tileElements = document.querySelectorAll('.tile');
+                
+                this.tiles.forEach((value, index) => {
+                    const tile = tileElements[index];
+                    if (value === 0) {
+                        tile.textContent = '';
+                        tile.className = 'tile empty';
+                    } else {
+                        tile.textContent = value;
+                        tile.className = 'tile';
+                    }
+                });
+            }
+            
+            updateMoves() {
+                document.getElementById('movesCount').textContent = this.moves;
+            }
+            
+            startTimer() {
+                this.startTime = Date.now();
+                this.timerInterval = setInterval(() => {
+                    this.updateTimer();
+                }, 1000);
+            }
+            
+            stopTimer() {
+                if (this.timerInterval) {
+                    clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                }
+            }
+            
+            updateTimer() {
+                if (!this.startTime) {
+                    document.getElementById('timeCount').textContent = '00:00';
+                    return;
+                }
+                
+                const elapsed = Date.now() - this.startTime;
+                const minutes = Math.floor(elapsed / 60000);
+                const seconds = Math.floor((elapsed % 60000) / 1000);
+                
+                document.getElementById('timeCount').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+            
+            checkWin() {
+                for (let i = 0; i < this.tiles.length - 1; i++) {
+                    if (this.tiles[i] !== i + 1) {
+                        return false;
+                    }
+                }
+                return this.tiles[this.tiles.length - 1] === 0;
+            }
+            
+            handleWin() {
+                this.isGameActive = false;
+                this.stopTimer();
+                
+                // Показываем сообщение о победе
+                document.getElementById('finalMoves').textContent = this.moves;
+                document.getElementById('finalTime').textContent = 
+                    document.getElementById('timeCount').textContent;
+                document.getElementById('winMessage').style.display = 'flex';
+            }
+        }
+        
+        // Глобальные функции для кнопок
+        let game;
+        
+        function initializeGame() {
+            game = new FifteenPuzzle();
+        }
+        
+        function newGame() {
+            game.resetGame();
+        }
+        
+        function shufflePuzzle() {
+            game.shufflePuzzle();
+        }
+        
+        function closeWinMessage() {
+            document.getElementById('winMessage').style.display = 'none';
+        }
+        
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', initializeGame);
+    </script>
+</body>
+</html>

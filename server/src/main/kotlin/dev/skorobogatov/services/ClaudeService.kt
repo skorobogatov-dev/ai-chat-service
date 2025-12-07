@@ -201,8 +201,10 @@ class ClaudeService(
 
                     logger.debug("Received response with stop_reason: ${apiResponse.stop_reason}")
 
-                    // Проверяем, нужно ли вызывать инструменты
-                    if (apiResponse.stop_reason == "tool_use") {
+                    // Проверяем, есть ли tool_use блоки в контенте (не полагаемся только на stop_reason)
+                    val hasToolUse = apiResponse.content.any { it.type == "tool_use" }
+
+                    if (hasToolUse) {
                         // Добавляем ответ ассистента в историю (конвертируем Response в Request)
                         val assistantContent = apiResponse.content.map { responseContent ->
                             ClaudeContentRequest(
@@ -227,7 +229,7 @@ class ClaudeService(
                                 val toolInput = content.input ?: JsonObject(emptyMap())
                                 val toolUseId = content.id ?: continue
 
-                                logger.info("Calling MCP tool: $toolName with input: $toolInput")
+                                logger.info("Calling MCP tool: $toolName with input keys: ${toolInput.keys}, input size: ${toolInput.toString().length}")
 
                                 try {
                                     val toolResult = onToolCall(toolName, toolInput)

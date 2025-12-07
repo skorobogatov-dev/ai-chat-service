@@ -34,6 +34,7 @@
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="chat">💬 Чат</button>
+                <button class="tab-button" data-tab="apps">🎮 Приложения</button>
                 <button class="tab-button" data-tab="mcp">🔧 MCP Tools</button>
                 <button class="tab-button" data-tab="tasks">⏰ Задачи</button>
                 <button class="tab-button" data-tab="support">🎧 Поддержка</button>
@@ -71,6 +72,41 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Apps Gallery Tab Content -->
+            <div id="appsTab" class="tab-content">
+                <div class="apps-container">
+                    <!-- Dev Command Input -->
+                    <div class="apps-input-section">
+                        <form id="devCommandForm" class="dev-command-form">
+                            <input
+                                type="text"
+                                id="devCommandInput"
+                                placeholder="Опишите приложение, например: Сделай игру змейка"
+                                autocomplete="off"
+                                required
+                            >
+                            <button type="submit" id="devCommandButton" class="btn-primary">
+                                🚀 Создать
+                            </button>
+                        </form>
+                        <div id="devCommandStatus" class="dev-command-status"></div>
+                    </div>
+
+                    <div class="apps-section">
+                        <h2>
+                            🎮 Ваши приложения
+                            <button id="refreshAppsButton" class="btn-secondary">🔄 Обновить</button>
+                        </h2>
+                        <div id="appsGrid" class="apps-grid">
+                            <div class="apps-placeholder">
+                                <p>Пока нет созданных приложений</p>
+                                <small>Используйте команду <code>/dev Сделай игру 2048</code> в чате</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

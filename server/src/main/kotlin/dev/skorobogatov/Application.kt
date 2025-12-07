@@ -138,10 +138,16 @@ fun Application.module() {
         mcpService = mcpService
     )
 
+    // Создание сервиса для управления веб-приложениями
+    val appsService = dev.skorobogatov.services.AppsService(
+        appsDirectory = "src/main/resources/static/apps"
+    )
+
     // Создание обработчика команд
     val commandHandler = dev.skorobogatov.services.CommandHandler(
         mcpService = mcpService,
-        claudeService = claudeService
+        claudeService = claudeService,
+        appsService = appsService
     )
 
     // Конфигурация плагинов
@@ -150,7 +156,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler, supportSystemPrompt)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()

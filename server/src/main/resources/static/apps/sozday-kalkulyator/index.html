@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .calculator {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 25px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .display {
+            width: 100%;
+            height: 80px;
+            font-size: 2.5rem;
+            text-align: right;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: none;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 15px;
+            box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.1);
+            color: #333;
+            font-weight: 600;
+            outline: none;
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        .btn {
+            height: 65px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.3rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            outline: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-number {
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            color: white;
+        }
+
+        .btn-number:hover {
+            background: linear-gradient(135deg, #0984e3 0%, #74b9ff 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-operator {
+            background: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
+            color: white;
+        }
+
+        .btn-operator:hover {
+            background: linear-gradient(135deg, #e84393 0%, #fd79a8 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-equals {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+            color: white;
+            grid-column: span 2;
+        }
+
+        .btn-equals:hover {
+            background: linear-gradient(135deg, #00cec9 0%, #00b894 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #ff7675 0%, #d63031 100%);
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: linear-gradient(135deg, #d63031 0%, #ff7675 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-zero {
+            grid-column: span 2;
+        }
+
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            color: #333;
+            font-weight: 700;
+        }
+
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(0);
+            animation: ripple-animation 0.6s linear;
+            pointer-events: none;
+        }
+
+        @keyframes ripple-animation {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .calculator {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .display {
+                height: 70px;
+                font-size: 2rem;
+            }
+            
+            .btn {
+                height: 55px;
+                font-size: 1.1rem;
+            }
+            
+            .buttons {
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator">
+        <h1 class="title">Калькулятор</h1>
+        <input type="text" class="display" id="display" value="0" readonly>
+        <div class="buttons">
+            <button class="btn btn-clear" onclick="clearDisplay()">C</button>
+            <button class="btn btn-clear" onclick="deleteLast()">⌫</button>
+            <button class="btn btn-operator" onclick="appendToDisplay('/')" data-ripple>÷</button>
+            <button class="btn btn-operator" onclick="appendToDisplay('*')" data-ripple>×</button>
+            
+            <button class="btn btn-number" onclick="appendToDisplay('7')" data-ripple>7</button>
+            <button class="btn btn-number" onclick="appendToDisplay('8')" data-ripple>8</button>
+            <button class="btn btn-number" onclick="appendToDisplay('9')" data-ripple>9</button>
+            <button class="btn btn-operator" onclick="appendToDisplay('-')" data-ripple>−</button>
+            
+            <button class="btn btn-number" onclick="appendToDisplay('4')" data-ripple>4</button>
+            <button class="btn btn-number" onclick="appendToDisplay('5')" data-ripple>5</button>
+            <button class="btn btn-number" onclick="appendToDisplay('6')" data-ripple>6</button>
+            <button class="btn btn-operator" onclick="appendToDisplay('+')" data-ripple>+</button>
+            
+            <button class="btn btn-number" onclick="appendToDisplay('1')" data-ripple>1</button>
+            <button class="btn btn-number" onclick="appendToDisplay('2')" data-ripple>2</button>
+            <button class="btn btn-number" onclick="appendToDisplay('3')" data-ripple>3</button>
+            <button class="btn btn-equals" onclick="calculate()" data-ripple rowspan="2">=</button>
+            
+            <button class="btn btn-number btn-zero" onclick="appendToDisplay('0')" data-ripple>0</button>
+            <button class="btn btn-number" onclick="appendToDisplay('.')" data-ripple>.</button>
+        </div>
+    </div>
+
+    <script>
+        let display = document.getElementById('display');
+        let currentInput = '0';
+        let shouldResetDisplay = false;
+
+        function updateDisplay() {
+            display.value = currentInput;
+        }
+
+        function clearDisplay() {
+            currentInput = '0';
+            shouldResetDisplay = false;
+            updateDisplay();
+            addRippleEffect(event.target);
+        }
+
+        function deleteLast() {
+            if (currentInput.length > 1) {
+                currentInput = currentInput.slice(0, -1);
+            } else {
+                currentInput = '0';
+            }
+            updateDisplay();
+            addRippleEffect(event.target);
+        }
+
+        function appendToDisplay(value) {
+            if (shouldResetDisplay) {
+                currentInput = '0';
+                shouldResetDisplay = false;
+            }
+
+            // Если текущее значение равно 0 и вводится число
+            if (currentInput === '0' && !isNaN(value)) {
+                currentInput = value;
+            }
+            // Если вводится оператор или точка
+            else if (value === '.' || value === '+' || value === '-' || value === '*' || value === '/') {
+                // Проверяем, не заканчивается ли уже оператором
+                const lastChar = currentInput[currentInput.length - 1];
+                if (value === '.' && currentInput.includes('.')) {
+                    // Не добавляем точку, если она уже есть в текущем числе
+                    const parts = currentInput.split(/[\+\-\*\/]/);
+                    const lastPart = parts[parts.length - 1];
+                    if (lastPart.includes('.')) {
+                        return;
+                    }
+                }
+                
+                if (['+', '-', '*', '/'].includes(lastChar) && ['+', '-', '*', '/'].includes(value)) {
+                    // Заменяем последний оператор новым
+                    currentInput = currentInput.slice(0, -1) + value;
+                } else {
+                    currentInput += value;
+                }
+            }
+            // Если вводится число
+            else {
+                if (currentInput === '0') {
+                    currentInput = value;
+                } else {
+                    currentInput += value;
+                }
+            }
+
+            updateDisplay();
+            addRippleEffect(event.target);
+        }
+
+        function calculate() {
+            try {
+                // Заменяем символы для корректного вычисления
+                let expression = currentInput
+                    .replace(/×/g, '*')
+                    .replace(/÷/g, '/')
+                    .replace(/−/g, '-');
+
+                // Проверяем корректность выражения
+                if (/[\+\-\*\/]$/.test(expression)) {
+                    throw new Error('Некорректное выражение');
+                }
+
+                // Безопасное вычисление
+                const result = Function('"use strict"; return (' + expression + ')')();
+                
+                if (isNaN(result) || !isFinite(result)) {
+                    throw new Error('Ошибка вычисления');
+                }
+
+                currentInput = result.toString();
+                shouldResetDisplay = true;
+                updateDisplay();
+                
+            } catch (error) {
+                currentInput = 'Ошибка';
+                shouldResetDisplay = true;
+                updateDisplay();
+                
+                // Автоматически очищаем ошибку через 2 секунды
+                setTimeout(() => {
+                    if (currentInput === 'Ошибка') {
+                        clearDisplay();
+                    }
+                }, 2000);
+            }
+            
+            addRippleEffect(event.target);
+        }
+
+        // Добавляем эффект ripple
+        function addRippleEffect(button) {
+            const ripple = document.createElement('span');
+            const rect = button.getBoundingClientRect();
+            const size = Math.max(rect.height, rect.width);
+            const x = event.clientX - rect.left - size / 2;
+            const y = event.clientY - rect.top - size / 2;
+            
+            ripple.style.width = ripple.style.height = size + 'px';
+            ripple.style.left = x + 'px';
+            ripple.style.top = y + 'px';
+            ripple.classList.add('ripple');
+            
+            button.appendChild(ripple);
+            
+            setTimeout(() => {
+                ripple.remove();
+            }, 600);
+        }
+
+        // Поддержка клавиатуры
+        document.addEventListener('keydown', function(event) {
+            const key = event.key;
+            
+            if (key >= '0' && key <= '9') {
+                appendToDisplay(key);
+            } else if (key === '.') {
+                appendToDisplay('.');
+            } else if (key === '+') {
+                appendToDisplay('+');
+            } else if (key === '-') {
+                appendToDisplay('-');
+            } else if (key === '*') {
+                appendToDisplay('*');
+            } else if (key === '/') {
+                event.preventDefault(); // Предотвращаем поиск в браузере
+                appendToDisplay('/');
+            } else if (key === 'Enter' || key === '=') {
+                calculate();
+            } else if (key === 'Escape' || key === 'c' || key === 'C') {
+                clearDisplay();
+            } else if (key === 'Backspace') {
+                deleteLast();
+            }
+        });
+
+        // Предотвращаем ввод с клавиатуры в поле display
+        display.addEventListener('keydown', function(event) {
+            event.preventDefault();
+        });
+
+        // Анимация при загрузке
+        window.addEventListener('load', function() {
+            document.querySelector('.calculator').style.animation = 'slideIn 0.5s ease-out';
+        });
+    </script>
+</body>
+</html>
