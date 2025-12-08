@@ -5,7 +5,9 @@ class ChatApp {
         this.chatForm = document.getElementById('chatForm');
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
+        this.providerSelect = document.getElementById('providerSelect');
         this.modelSelect = document.getElementById('modelSelect');
+        this.ollamaStatus = document.getElementById('ollamaStatus');
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
         this.historyModal = document.getElementById('historyModal');
         this.closeModalButton = document.getElementById('closeModalButton');
@@ -16,6 +18,12 @@ class ChatApp {
         this.sessionId = null; // Current session ID
         this.conversations = []; // List of all conversations
         this.pollingInterval = null; // Interval for polling conversations
+        this.currentProvider = 'claude'; // Current provider (claude or ollama)
+        this.ollamaModels = []; // Cached Ollama models
+        this.claudeModels = [
+            { value: 'claude-3-haiku-20240307', name: 'Haiku (Быстрая)' },
+            { value: 'claude-sonnet-4-20250514', name: 'Sonnet 4 (Продвинутая)' }
+        ];
 
         this.init();
     }
@@ -31,8 +39,14 @@ class ChatApp {
             }
         });
 
+        // Provider change listener
+        this.providerSelect.addEventListener('change', () => this.handleProviderChange());
+
         // Load conversations list
         await this.loadConversations();
+
+        // Preload Ollama models in background
+        this.loadOllamaModels();
 
         // Disable history button initially
         this.updateHistoryButton();
@@ -58,6 +72,86 @@ class ChatApp {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
         }
+    }
+
+    /**
+     * Загрузить список моделей Ollama
+     */
+    async loadOllamaModels() {
+        try {
+            const response = await fetch('/api/ollama/models');
+            if (!response.ok) {
+                throw new Error('Failed to load Ollama models');
+            }
+            const data = await response.json();
+            this.ollamaModels = data.models.map(m => ({
+                value: m.name,
+                name: m.name
+            }));
+
+            // Update status
+            if (this.ollamaStatus) {
+                this.ollamaStatus.textContent = `Ollama: ${data.count} моделей доступно`;
+                this.ollamaStatus.className = 'ollama-status available';
+            }
+        } catch (error) {
+            console.error('Error loading Ollama models:', error);
+            this.ollamaModels = [];
+            if (this.ollamaStatus) {
+                this.ollamaStatus.textContent = 'Ollama: недоступен';
+                this.ollamaStatus.className = 'ollama-status unavailable';
+            }
+        }
+    }
+
+    /**
+     * Обработка смены провайдера
+     */
+    handleProviderChange() {
+        const provider = this.providerSelect.value;
+        this.currentProvider = provider;
+
+        // Update models dropdown
+        this.updateModelsDropdown(provider);
+
+        // Show/hide Ollama status
+        if (this.ollamaStatus) {
+            this.ollamaStatus.style.display = provider === 'ollama' ? 'block' : 'none';
+        }
+    }
+
+    /**
+     * Обновить список моделей в выпадающем списке
+     */
+    updateModelsDropdown(provider) {
+        const models = provider === 'ollama' ? this.ollamaModels : this.claudeModels;
+
+        // Clear current options
+        this.modelSelect.innerHTML = '';
+
+        if (models.length === 0 && provider === 'ollama') {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Нет доступных моделей';
+            option.disabled = true;
+            option.selected = true;
+            this.modelSelect.appendChild(option);
+            return;
+        }
+
+        // Add models
+        models.forEach((model, index) => {
+            const option = document.createElement('option');
+            option.value = model.value;
+            option.textContent = model.name;
+            // Select first option for Ollama, second (Sonnet) for Claude
+            if (provider === 'ollama' && index === 0) {
+                option.selected = true;
+            } else if (provider === 'claude' && model.value.includes('sonnet')) {
+                option.selected = true;
+            }
+            this.modelSelect.appendChild(option);
+        });
     }
 
     async loadConversations() {
@@ -727,6 +821,10 @@ class ChatApp {
         if (model) {
             requestBody.model = model;
         }
+        // Send provider
+        if (this.currentProvider) {
+            requestBody.provider = this.currentProvider;
+        }
         // Send sessionId if we have one
         if (this.sessionId) {
             requestBody.sessionId = this.sessionId;
@@ -760,6 +858,42 @@ class ChatApp {
         return data;
     }
 
+    /**
+     * Попытка извлечь текст из JSON ответа (для Ollama)
+     */
+    parseJsonResponse(text) {
+        // Проверяем, похоже ли на JSON
+        const trimmed = text.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+            return text;
+        }
+
+        try {
+            const parsed = JSON.parse(trimmed);
+            // Если есть поле answer - возвращаем его
+            if (parsed.answer) {
+                return parsed.answer;
+            }
+            // Если есть поле response - возвращаем его
+            if (parsed.response) {
+                return parsed.response;
+            }
+            // Если есть поле text - возвращаем его
+            if (parsed.text) {
+                return parsed.text;
+            }
+            // Если есть поле content - возвращаем его
+            if (parsed.content) {
+                return parsed.content;
+            }
+            // Иначе возвращаем оригинал
+            return text;
+        } catch (e) {
+            // Не JSON - возвращаем как есть
+            return text;
+        }
+    }
+
     addMessage(text, type, modelOrHtml = null, stats = null, scrollToBottom = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
@@ -771,10 +905,16 @@ class ChatApp {
         let modelInfo = '';
         let formattedText;
 
+        // Parse JSON response if it's from assistant
+        let displayText = text;
+        if (type === 'assistant' && modelOrHtml !== true) {
+            displayText = this.parseJsonResponse(text);
+        }
+
         // Check if modelOrHtml is boolean (true = HTML content) or string (model name)
         if (modelOrHtml === true) {
             // Text is already HTML formatted
-            formattedText = text;
+            formattedText = displayText;
         } else {
             // Regular text - escape and format
             if (modelOrHtml && type === 'assistant' && typeof modelOrHtml === 'string') {
@@ -782,7 +922,7 @@ class ChatApp {
                 modelInfo = ` <span class="model-badge">${modelName}</span>`;
             }
             // Preserve line breaks by converting \n to <br>
-            formattedText = this.escapeHtml(text).replace(/\n/g, '<br>');
+            formattedText = this.escapeHtml(displayText).replace(/\n/g, '<br>');
         }
 
         contentDiv.innerHTML = `<strong>${label}:${modelInfo}</strong> ${formattedText}`;
@@ -838,7 +978,15 @@ class ChatApp {
             'claude-3-haiku-20240307': 'Haiku',
             'claude-sonnet-4-20250514': 'Sonnet 4'
         };
-        return modelNames[modelId] || modelId;
+        // Check if it's a known Claude model, otherwise return as is (Ollama models)
+        if (modelNames[modelId]) {
+            return modelNames[modelId];
+        }
+        // For Ollama models, just return the model name with indicator
+        if (modelId && !modelId.startsWith('claude')) {
+            return `🦙 ${modelId}`;
+        }
+        return modelId;
     }
 
     setInputState(enabled) {

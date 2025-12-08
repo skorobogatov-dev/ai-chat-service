@@ -43,34 +43,50 @@ ai-chat-service/
 | CLAUDE_SYSTEM_PROMPT | Системный промпт | JSON формат |
 | OLLAMA_BASE_URL | URL Ollama сервера | http://localhost:11434 |
 | OLLAMA_MODEL | Модель для embeddings | nomic-embed-text |
+| OLLAMA_CHAT_MODEL | Модель для chat (локальная LLM) | llama3.2 |
 
 ## API Endpoints
 
 ### Chat API
 ```bash
-# Базовый запрос (создает новую сессию)
+# Базовый запрос с Claude (создает новую сессию)
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Привет!"}'
+
+# Запрос с локальной Ollama LLM
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Привет!", "provider": "ollama"}'
+
+# Ollama с конкретной моделью
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Привет!", "provider": "ollama", "model": "mistral"}'
 
 # Продолжение диалога
 curl -X POST http://localhost:8080/api/chat \
   -d '{"message": "Расскажи подробнее", "sessionId": "uuid-from-previous-response"}'
 
-# С RAG и reranking
+# С RAG и reranking (только Claude)
 curl -X POST http://localhost:8080/api/chat \
   -d '{"message": "Вопрос", "useRAG": true, "useReranking": true, "ragTopK": 3}'
+
+# RAG с Ollama (reranking недоступен)
+curl -X POST http://localhost:8080/api/chat \
+  -d '{"message": "Вопрос", "provider": "ollama", "useRAG": true, "ragTopK": 3}'
 ```
 
 **Параметры ChatRequest:**
 - `message` (обязательно) - сообщение пользователя
 - `sessionId` - ID сессии для продолжения диалога
 - `systemPrompt` - переопределение системного промпта
-- `model` - модель Claude (claude-3-haiku-20240307, claude-sonnet-4-20250514)
+- `provider` - провайдер LLM: "claude" (default) или "ollama"
+- `model` - модель (для Claude: claude-3-haiku-20240307, claude-sonnet-4-20250514; для Ollama: llama3.2, mistral, etc.)
 - `useRAG` - включить RAG (default: false)
 - `ragTopK` - количество чанков для контекста (default: 3)
 - `ragMinSimilarity` - минимальное сходство (default: 0.5)
-- `useReranking` - включить reranking (default: false)
+- `useReranking` - включить reranking (default: false, только для Claude)
 
 ### MCP API
 ```bash
@@ -144,8 +160,20 @@ curl -X POST http://localhost:8080/api/embeddings/rag/reload
 curl -X POST http://localhost:8080/api/embeddings/rag/search -d '{"query": "...", "topK": 5}'
 curl -X DELETE http://localhost:8080/api/embeddings/rag/documents/{fileName}
 
-# Статус Ollama
+# Статус Ollama (embeddings)
 curl http://localhost:8080/api/embeddings/status
+```
+
+### Ollama API (Chat)
+```bash
+# Список доступных моделей для chat
+curl http://localhost:8080/api/ollama/models
+
+# Статус Ollama chat сервиса
+curl http://localhost:8080/api/ollama/status
+
+# Проверка доступности конкретной модели
+curl http://localhost:8080/api/ollama/models/llama3.2/check
 ```
 
 ### Swagger UI
@@ -156,7 +184,7 @@ curl http://localhost:8080/api/embeddings/status
 
 ### Request Flow
 1. HTTP → ChatRoutes → ConversationHistoryService (сессия)
-2. → ClaudeService.sendMessage() → Anthropic API
+2. → ClaudeService.sendMessage() → Anthropic API **или** OllamaChatService.sendMessage() → Ollama API (в зависимости от provider)
 3. → ConversationHistoryService (сохранение) → FileStorageService
 4. → ChatResponse → клиент
 
@@ -166,6 +194,7 @@ curl http://localhost:8080/api/embeddings/status
 |-----------|------------|
 | Application.kt | Entry point, инициализация сервисов |
 | ClaudeService | Anthropic API, history compression, title generation |
+| OllamaChatService | Ollama Chat API для локальной LLM (альтернатива Claude) |
 | ConversationHistoryService | Управление сессиями, in-memory + persistent |
 | FileStorageService | Сохранение диалогов в JSON (chat_sessions/) |
 | TaskStorageService | Сохранение задач (scheduled_tasks/) |
@@ -216,10 +245,23 @@ Claude AI автоматически использует MCP инструмен
 - RAG - проверка соответствия стандартам
 
 ## External Dependencies
-- **Anthropic Claude API** (requires API key)
+- **Anthropic Claude API** (requires API key) - облачная LLM
+- **Ollama** (optional) - локальная LLM (llama3.2, mistral, etc.) и embeddings (nomic-embed-text)
 - **Ktor 3.0.3** - Server (Netty), Client (CIO), WebSockets
 - **Kotlin 2.1.0**
 - **MCP Kotlin SDK 0.6.0**
 - **kotlinx.serialization**
 - **Logback**
-- **Ollama** (optional) - nomic-embed-text
+
+### Сравнение провайдеров
+
+| Функция | Claude | Ollama |
+|---------|--------|--------|
+| Chat/генерация | ✅ | ✅ |
+| MCP Tools | ✅ | ❌ |
+| RAG | ✅ | ✅ |
+| Reranking | ✅ | ❌ |
+| История/сжатие | ✅ | ✅ |
+| Генерация названий | ✅ | ✅ |
+| Требует API ключ | ✅ | ❌ |
+| Работает локально | ❌ | ✅ |

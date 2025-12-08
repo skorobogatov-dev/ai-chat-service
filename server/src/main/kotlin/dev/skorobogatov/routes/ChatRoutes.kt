@@ -6,6 +6,7 @@ import dev.skorobogatov.services.ConversationHistoryService
 import dev.skorobogatov.services.MCPService
 import dev.skorobogatov.services.VectorStoreService
 import dev.skorobogatov.services.OllamaService
+import dev.skorobogatov.services.OllamaChatService
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -33,6 +34,7 @@ fun Route.chatRoutes(
     mcpService: MCPService,
     vectorStoreService: VectorStoreService? = null,
     ollamaService: OllamaService? = null,
+    ollamaChatService: OllamaChatService? = null,
     commandHandler: dev.skorobogatov.services.CommandHandler? = null
 ) {
     route("/api/chat") {
@@ -46,8 +48,11 @@ fun Route.chatRoutes(
                 }
 
                 logger.info("Received chat request with message length: ${request.message.length}")
-                if (request.model != null) {
-                    logger.info("Using custom model: ${request.model}")
+                val useOllama = request.provider?.lowercase() == "ollama"
+                if (useOllama) {
+                    logger.info("Using Ollama provider${if (request.model != null) " with model: ${request.model}" else ""}")
+                } else if (request.model != null) {
+                    logger.info("Using Claude provider with model: ${request.model}")
                 }
 
                 // Проверка на команды
@@ -227,65 +232,76 @@ fun Route.chatRoutes(
                         ClaudeMessage(role = role, content = msg.content)
                     }
 
-                    // Создать summary
-                    val summary = claudeService.createSummary(claudeMessages)
+                    // Создать summary (использовать тот же провайдер)
+                    val summary = if (useOllama && ollamaChatService != null) {
+                        ollamaChatService.createSummary(claudeMessages)
+                    } else {
+                        claudeService.createSummary(claudeMessages)
+                    }
 
                     // Сжать историю
                     historyService.compressHistory(session.sessionId, summary, messagesToCompress.size)
                     historyCompressed = true
                 }
 
-                // Получить все сообщения для отправки в Claude API
+                // Получить все сообщения для отправки в API
                 val allMessages = session.toClaudeMessages()
 
-                // Проверить, подключен ли MCP сервер и получить инструменты
-                val connectionStatus = mcpService.getConnectionStatus()
-                val apiResponse = if (connectionStatus.connected) {
-                    logger.info("MCP server connected, fetching tools")
-                    val mcpToolsResponse = mcpService.listTools()
+                // Определить, какой провайдер использовать
+                val apiResponse = if (useOllama && ollamaChatService != null) {
+                    // Использовать локальную Ollama LLM
+                    logger.info("Using Ollama for chat generation")
+                    ollamaChatService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
+                } else {
+                    // Использовать Claude API (с поддержкой MCP tools)
+                    val connectionStatus = mcpService.getConnectionStatus()
+                    if (connectionStatus.connected) {
+                        logger.info("MCP server connected, fetching tools")
+                        val mcpToolsResponse = mcpService.listTools()
 
-                    if (mcpToolsResponse.tools.isNotEmpty()) {
-                        logger.info("Found ${mcpToolsResponse.tools.size} MCP tools, using tool-enabled mode")
+                        if (mcpToolsResponse.tools.isNotEmpty()) {
+                            logger.info("Found ${mcpToolsResponse.tools.size} MCP tools, using tool-enabled mode")
 
-                        // Конвертировать MCP инструменты в формат Claude
-                        val claudeTools = mcpToolsResponse.tools.map { mcpTool ->
-                            ClaudeTool(
-                                name = mcpTool.name,
-                                description = mcpTool.description ?: "No description",
-                                input_schema = convertMcpSchemaToJson(mcpTool.inputSchema)
-                            )
-                        }
+                            // Конвертировать MCP инструменты в формат Claude
+                            val claudeTools = mcpToolsResponse.tools.map { mcpTool ->
+                                ClaudeTool(
+                                    name = mcpTool.name,
+                                    description = mcpTool.description ?: "No description",
+                                    input_schema = convertMcpSchemaToJson(mcpTool.inputSchema)
+                                )
+                            }
 
-                        // Отправить запрос с поддержкой инструментов
-                        claudeService.sendMessageWithTools(
-                            messages = allMessages,
-                            tools = claudeTools,
-                            systemPrompt = enrichedSystemPrompt,
-                            requestModel = request.model,
-                            onToolCall = { toolName, input ->
-                                logger.info("Executing MCP tool: $toolName")
-                                // Конвертировать JsonObject в Map<String, String>
-                                val arguments = input.entries.associate { (key, value) ->
-                                    key to when (value) {
-                                        is JsonPrimitive -> value.content
-                                        else -> value.toString()
+                            // Отправить запрос с поддержкой инструментов
+                            claudeService.sendMessageWithTools(
+                                messages = allMessages,
+                                tools = claudeTools,
+                                systemPrompt = enrichedSystemPrompt,
+                                requestModel = request.model,
+                                onToolCall = { toolName, input ->
+                                    logger.info("Executing MCP tool: $toolName")
+                                    // Конвертировать JsonObject в Map<String, String>
+                                    val arguments = input.entries.associate { (key, value) ->
+                                        key to when (value) {
+                                            is JsonPrimitive -> value.content
+                                            else -> value.toString()
+                                        }
+                                    }
+                                    val result = mcpService.callTool(toolName, arguments)
+                                    if (result.success) {
+                                        result.result
+                                    } else {
+                                        throw Exception(result.error ?: "Unknown error calling tool")
                                     }
                                 }
-                                val result = mcpService.callTool(toolName, arguments)
-                                if (result.success) {
-                                    result.result
-                                } else {
-                                    throw Exception(result.error ?: "Unknown error calling tool")
-                                }
-                            }
-                        )
+                            )
+                        } else {
+                            logger.debug("MCP server connected but no tools available, using standard mode")
+                            claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
+                        }
                     } else {
-                        logger.debug("MCP server connected but no tools available, using standard mode")
+                        logger.debug("MCP server not connected, using standard mode")
                         claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
                     }
-                } else {
-                    logger.debug("MCP server not connected, using standard mode")
-                    claudeService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
                 }
 
                 // Добавить ответ ассистента в историю (с RAG чанками если они есть)
@@ -298,7 +314,12 @@ fun Route.chatRoutes(
                 // Сгенерировать название для нового диалога
                 if (isNewSession && session.title == null) {
                     try {
-                        val title = claudeService.generateConversationTitle(request.message)
+                        // Использовать тот же провайдер для генерации названия
+                        val title = if (useOllama && ollamaChatService != null) {
+                            ollamaChatService.generateConversationTitle(request.message)
+                        } else {
+                            claudeService.generateConversationTitle(request.message)
+                        }
                         historyService.setConversationTitle(session.sessionId, title)
                         logger.debug("Generated title for new conversation: $title")
                     } catch (e: Exception) {

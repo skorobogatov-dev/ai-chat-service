@@ -52,12 +52,22 @@
                     </div>
 
                     <form id="chatForm" class="input-form">
-                        <div class="model-selector">
-                            <label for="modelSelect">Модель:</label>
-                            <select id="modelSelect">
-                                <option value="claude-3-haiku-20240307">Haiku (Быстрая и доступная)</option>
-                                <option value="claude-sonnet-4-20250514" selected>Sonnet 4 (Самая продвинутая)</option>
-                            </select>
+                        <div class="provider-model-selector">
+                            <div class="provider-selector">
+                                <label for="providerSelect">Провайдер:</label>
+                                <select id="providerSelect">
+                                    <option value="claude" selected>Claude (Anthropic)</option>
+                                    <option value="ollama">Ollama (Локальная)</option>
+                                </select>
+                            </div>
+                            <div class="model-selector">
+                                <label for="modelSelect">Модель:</label>
+                                <select id="modelSelect">
+                                    <option value="claude-3-haiku-20240307">Haiku (Быстрая)</option>
+                                    <option value="claude-sonnet-4-20250514" selected>Sonnet 4 (Продвинутая)</option>
+                                </select>
+                            </div>
+                            <div id="ollamaStatus" class="ollama-status"></div>
                         </div>
                         <div class="input-row">
                             <input

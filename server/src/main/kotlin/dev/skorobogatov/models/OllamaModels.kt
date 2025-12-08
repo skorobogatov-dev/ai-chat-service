@@ -2,6 +2,80 @@ package dev.skorobogatov.models
 
 import kotlinx.serialization.Serializable
 
+// =====================================================
+// OLLAMA CHAT API MODELS
+// =====================================================
+
+/**
+ * Запрос к Ollama /api/chat endpoint
+ */
+@Serializable
+data class OllamaChatRequest(
+    val model: String,
+    val messages: List<OllamaChatMessage>,
+    val stream: Boolean = false,
+    val options: OllamaChatOptions? = null
+)
+
+/**
+ * Сообщение для Ollama Chat API
+ */
+@Serializable
+data class OllamaChatMessage(
+    val role: String,  // "system", "user", "assistant"
+    val content: String
+)
+
+/**
+ * Опции генерации для Ollama
+ */
+@Serializable
+data class OllamaChatOptions(
+    val temperature: Double? = null,
+    val num_predict: Int? = null,  // аналог max_tokens
+    val top_p: Double? = null,
+    val top_k: Int? = null
+)
+
+/**
+ * Ответ от Ollama /api/chat endpoint (non-streaming)
+ */
+@Serializable
+data class OllamaChatResponse(
+    val model: String,
+    val message: OllamaChatMessage,
+    val done: Boolean,
+    val total_duration: Long? = null,
+    val load_duration: Long? = null,
+    val prompt_eval_count: Int? = null,  // input tokens
+    val prompt_eval_duration: Long? = null,
+    val eval_count: Int? = null,         // output tokens
+    val eval_duration: Long? = null
+)
+
+/**
+ * Информация о модели Ollama
+ */
+@Serializable
+data class OllamaModelInfo(
+    val name: String,
+    val modified_at: String? = null,
+    val size: Long? = null,
+    val digest: String? = null
+)
+
+/**
+ * Ответ от Ollama /api/tags endpoint (список моделей)
+ */
+@Serializable
+data class OllamaModelsResponse(
+    val models: List<OllamaModelInfo>
+)
+
+// =====================================================
+// OLLAMA EMBEDDINGS API MODELS
+// =====================================================
+
 /**
  * Запрос для получения embedding от Ollama
  */

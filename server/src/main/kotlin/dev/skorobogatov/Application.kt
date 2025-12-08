@@ -114,6 +114,16 @@ fun Application.module() {
         model = ollamaModel
     )
 
+    // Создание сервиса для работы с Ollama (chat/генерация текста)
+    val ollamaChatModel = environment.config.propertyOrNull("ollama.chatModel")?.getString() ?: "llama3.2"
+    val ollamaChatService = dev.skorobogatov.services.OllamaChatService(
+        httpClient = httpClient,
+        baseUrl = ollamaBaseUrl,
+        defaultModel = ollamaChatModel,
+        maxTokens = maxTokens,
+        defaultSystemPrompt = systemPrompt
+    )
+
     // Создание сервиса для разбиения текста на чанки
     val chunkerService = dev.skorobogatov.services.TextChunkerService(
         defaultChunkSize = 750,
@@ -156,7 +166,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -266,7 +276,8 @@ fun Application.module() {
         environment.log.info("Application started successfully")
         environment.log.info("Server running on: http://0.0.0.0:${environment.config.property("ktor.deployment.port").getString()}")
         environment.log.info("Using Claude model: $model")
-        environment.log.info("Ollama service configured: $ollamaBaseUrl (model: $ollamaModel)")
+        environment.log.info("Ollama embeddings service configured: $ollamaBaseUrl (model: $ollamaModel)")
+        environment.log.info("Ollama chat service configured: $ollamaBaseUrl (model: $ollamaChatModel)")
         environment.log.info("RAG system initialized: ${vectorStoreService.getDocumentsCount()} documents, ${vectorStoreService.getTotalChunksCount()} chunks")
 
         // Прогрев Ollama модели (загрузка в память)
