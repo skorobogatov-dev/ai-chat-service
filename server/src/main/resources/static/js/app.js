@@ -5,7 +5,6 @@ class ChatApp {
         this.chatForm = document.getElementById('chatForm');
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
-        this.providerSelect = document.getElementById('providerSelect');
         this.modelSelect = document.getElementById('modelSelect');
         this.ollamaStatus = document.getElementById('ollamaStatus');
         this.viewHistoryButton = document.getElementById('viewHistoryButton');
@@ -18,12 +17,8 @@ class ChatApp {
         this.sessionId = null; // Current session ID
         this.conversations = []; // List of all conversations
         this.pollingInterval = null; // Interval for polling conversations
-        this.currentProvider = 'claude'; // Current provider (claude or ollama)
+        this.currentProvider = 'ollama'; // Always use Ollama
         this.ollamaModels = []; // Cached Ollama models
-        this.claudeModels = [
-            { value: 'claude-3-haiku-20240307', name: 'Haiku (Быстрая)' },
-            { value: 'claude-sonnet-4-20250514', name: 'Sonnet 4 (Продвинутая)' }
-        ];
 
         this.init();
     }
@@ -39,14 +34,11 @@ class ChatApp {
             }
         });
 
-        // Provider change listener
-        this.providerSelect.addEventListener('change', () => this.handleProviderChange());
-
         // Load conversations list
         await this.loadConversations();
 
-        // Preload Ollama models in background
-        this.loadOllamaModels();
+        // Load Ollama models
+        await this.loadOllamaModels();
 
         // Disable history button initially
         this.updateHistoryButton();
@@ -89,9 +81,12 @@ class ChatApp {
                 name: m.name
             }));
 
+            // Update models dropdown
+            this.updateModelsDropdown();
+
             // Update status
             if (this.ollamaStatus) {
-                this.ollamaStatus.textContent = `Ollama: ${data.count} моделей доступно`;
+                this.ollamaStatus.textContent = `Ollama: ${data.count} моделей`;
                 this.ollamaStatus.className = 'ollama-status available';
             }
         } catch (error) {
@@ -105,49 +100,35 @@ class ChatApp {
     }
 
     /**
-     * Обработка смены провайдера
-     */
-    handleProviderChange() {
-        const provider = this.providerSelect.value;
-        this.currentProvider = provider;
-
-        // Update models dropdown
-        this.updateModelsDropdown(provider);
-
-        // Show/hide Ollama status
-        if (this.ollamaStatus) {
-            this.ollamaStatus.style.display = provider === 'ollama' ? 'block' : 'none';
-        }
-    }
-
-    /**
      * Обновить список моделей в выпадающем списке
      */
-    updateModelsDropdown(provider) {
-        const models = provider === 'ollama' ? this.ollamaModels : this.claudeModels;
+    updateModelsDropdown() {
+        const models = this.ollamaModels;
 
         // Clear current options
         this.modelSelect.innerHTML = '';
 
-        if (models.length === 0 && provider === 'ollama') {
+        if (models.length === 0) {
             const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'Нет доступных моделей';
-            option.disabled = true;
+            option.value = 'qwen2.5:0.5b';
+            option.textContent = 'qwen2.5:0.5b (default)';
             option.selected = true;
             this.modelSelect.appendChild(option);
             return;
         }
 
-        // Add models
-        models.forEach((model, index) => {
+        // Add models, prioritize qwen
+        const sortedModels = [...models].sort((a, b) => {
+            if (a.value.includes('qwen')) return -1;
+            if (b.value.includes('qwen')) return 1;
+            return 0;
+        });
+
+        sortedModels.forEach((model, index) => {
             const option = document.createElement('option');
             option.value = model.value;
             option.textContent = model.name;
-            // Select first option for Ollama, second (Sonnet) for Claude
-            if (provider === 'ollama' && index === 0) {
-                option.selected = true;
-            } else if (provider === 'claude' && model.value.includes('sonnet')) {
+            if (index === 0) {
                 option.selected = true;
             }
             this.modelSelect.appendChild(option);
@@ -459,7 +440,7 @@ class ChatApp {
                 body: JSON.stringify({
                     message: fullCommand,
                     sessionId: this.sessionId,
-                    model: 'claude-sonnet-4-20250514' // Всегда Sonnet для /dev
+                    model: this.modelSelect.value
                 })
             });
 
@@ -974,16 +955,8 @@ class ChatApp {
     }
 
     getModelDisplayName(modelId) {
-        const modelNames = {
-            'claude-3-haiku-20240307': 'Haiku',
-            'claude-sonnet-4-20250514': 'Sonnet 4'
-        };
-        // Check if it's a known Claude model, otherwise return as is (Ollama models)
-        if (modelNames[modelId]) {
-            return modelNames[modelId];
-        }
-        // For Ollama models, just return the model name with indicator
-        if (modelId && !modelId.startsWith('claude')) {
+        // All models are Ollama models now
+        if (modelId) {
             return `🦙 ${modelId}`;
         }
         return modelId;
@@ -1768,12 +1741,14 @@ class AppsManager {
         this.showStatus('Создаю приложение... Это может занять до минуты.', '');
 
         try {
+            // Get model from chat app if available
+            const model = window.chatApp?.modelSelect?.value || 'qwen2.5:0.5b';
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: `/dev ${description}`,
-                    model: 'claude-sonnet-4-20250514'
+                    model: model
                 })
             });
 

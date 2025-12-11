@@ -1,9 +1,8 @@
 package dev.skorobogatov.plugins
 
-import io.ktor.server.application.*
-import io.ktor.server.plugins.openapi.*
-import io.ktor.server.plugins.swagger.*
-import io.ktor.server.routing.*
+import io.ktor.server.application.Application
+import io.ktor.server.plugins.swagger.swaggerUI
+import io.ktor.server.routing.routing
 
 /**
  * Конфигурация OpenAPI и Swagger UI
@@ -15,7 +14,7 @@ fun Application.configureOpenAPI() {
             version = "4.15.5"
         }
 
-        // OpenAPI спецификация в формате HTML доступна по адресу /openapi
-        openAPI(path = "openapi", swaggerFile = "openapi/documentation.yaml")
+        // OpenAPI спецификация отключена - вызывает ошибки генерации файлов в production
+        // Используйте /swagger для просмотра API документации
     }
 }

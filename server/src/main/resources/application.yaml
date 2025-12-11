@@ -1,0 +1,35 @@
+ktor:
+  deployment:
+    port: "$PORT:8080"
+  application:
+    modules:
+      - dev.skorobogatov.ApplicationKt.module
+
+claude:
+  apiKey: "$ANTHROPIC_API_KEY:"
+  apiUrl: "https://api.anthropic.com/v1/messages"
+  model: "claude-sonnet-4-20250514"
+  maxTokens: 8192
+  systemPrompt: "$CLAUDE_SYSTEM_PROMPT:Ты помощник, который всегда отвечает на русском языке. Форматируй все ответы в виде JSON со следующей структурой: {\"answer\": \"твой подробный ответ на русском языке\", \"tags\": [\"тег1\", \"тег2\", \"тег3\"]}. Поле answer должно содержать полный и информативный ответ на русском языке."
+
+mcp:
+  # Автоматическое подключение к основному MCP серверу при старте (опционально)
+  # Если не задано, подключение можно выполнить через API
+  serverUrl: "$MCP_SERVER_URL:"
+  transportType: "websocket"
+  # MCP Filesystem Server URL (порт 3002)
+  filesystemServerUrl: "$MCP_FILESYSTEM_SERVER_URL:ws://localhost:3002/mcp"
+  # MCP Support Server URL (порт 3003)
+  supportServerUrl: "$MCP_SUPPORT_SERVER_URL:ws://localhost:3003/mcp"
+
+ollama:
+  # URL локального Ollama сервера
+  baseUrl: "$OLLAMA_BASE_URL:http://localhost:11434"
+  # Модель для векторизации текста (embeddings)
+  model: "$OLLAMA_MODEL:nomic-embed-text"
+  # Модель для генерации текста (chat)
+  chatModel: "$OLLAMA_CHAT_MODEL:qwen2.5:0.5b"
+
+support:
+  # Системный промпт для ассистента технической поддержки
+  systemPrompt: "$SUPPORT_SYSTEM_PROMPT:You are a technical support assistant for TaskMaster Pro, a task and project management platform.\n\nYour role:\n- Help users solve problems with the product\n- Answer questions about features, billing, and integrations\n- Search for relevant information in documentation (RAG provides context automatically)\n- Look up user information and ticket history (use MCP tools when needed)\n- Provide clear, friendly, and professional answers\n\nGuidelines:\n- Always be polite and helpful\n- Use documentation to provide accurate answers\n- Check user's ticket history for context if user ID is provided\n- If unsure, refer to documentation or ask for clarification\n- Suggest creating a support ticket for complex issues\n\nFormat responses in a friendly, professional manner."
