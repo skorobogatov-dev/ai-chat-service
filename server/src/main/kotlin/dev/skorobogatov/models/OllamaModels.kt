@@ -14,7 +14,8 @@ data class OllamaChatRequest(
     val model: String,
     val messages: List<OllamaChatMessage>,
     val stream: Boolean = false,
-    val options: OllamaChatOptions? = null
+    val options: OllamaChatOptions? = null,
+    val keep_alive: String = "10m"  // Держать модель в памяти 10 минут после запроса
 )
 
 /**

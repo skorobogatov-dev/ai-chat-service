@@ -71,12 +71,12 @@ fun Application.module() {
             logger = Logger.DEFAULT
             level = LogLevel.INFO
         }
-        // Увеличенные timeouts для Ollama (первый запрос может быть медленным)
+        // Увеличенные timeouts для Ollama (модель может долго загружаться в память)
         engine {
-            requestTimeout = 120_000 // 2 минуты на весь запрос
+            requestTimeout = 300_000 // 5 минут на весь запрос
             endpoint {
                 connectTimeout = 30_000 // 30 секунд на подключение
-                socketTimeout = 120_000 // 2 минуты на чтение/запись
+                socketTimeout = 300_000 // 5 минут на чтение/запись
             }
         }
     }

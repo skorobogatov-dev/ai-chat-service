@@ -20,6 +20,10 @@ class ChatApp {
         this.currentProvider = 'ollama'; // Always use Ollama
         this.ollamaModels = []; // Cached Ollama models
 
+        // Pending requests per session for parallel chat support
+        this.pendingRequests = new Map(); // sessionId -> { abortController, message }
+        this.chatMessages = new Map(); // sessionId -> Array of messages (cache)
+
         // Settings modal elements
         this.settingsModal = document.getElementById('settingsModal');
         this.openSettingsButton = document.getElementById('openSettingsButton');
@@ -430,8 +434,16 @@ class ChatApp {
         this.conversations.forEach(conv => {
             const convItem = document.createElement('div');
             convItem.className = 'conversation-item';
+            convItem.setAttribute('data-session-id', conv.sessionId);
+
             if (conv.sessionId === this.sessionId) {
                 convItem.classList.add('active');
+            }
+
+            // Check if this chat has pending request
+            const isPending = this.pendingRequests.has(conv.sessionId);
+            if (isPending) {
+                convItem.classList.add('loading');
             }
 
             const title = conv.title || 'Новый диалог';
@@ -443,9 +455,15 @@ class ChatApp {
                 ? `<span class="unread-badge">${conv.unreadCount}</span>`
                 : '';
 
+            // Add loading indicator
+            const loadingIndicator = isPending
+                ? '<span class="chat-loading-indicator" title="Генерация ответа...">⏳</span>'
+                : '';
+
             convItem.innerHTML = `
                 <div class="conversation-content">
                     <div class="conversation-title">
+                        ${loadingIndicator}
                         ${this.escapeHtml(title)}
                         ${unreadBadge}
                     </div>
@@ -477,6 +495,9 @@ class ChatApp {
             return; // Already on this conversation
         }
 
+        // Hide loading indicator from previous chat if any
+        this.hideLoadingIndicator();
+
         this.sessionId = sessionId;
 
         // Clear current messages
@@ -504,6 +525,11 @@ class ChatApp {
                 const type = msg.type === 'USER' ? 'user' : 'assistant';
                 this.addMessage(msg.content, type, null, null, false);
             });
+
+            // Show loading indicator if this chat has pending request
+            if (this.pendingRequests.has(sessionId)) {
+                this.showLoadingIndicator();
+            }
 
             // Load session settings if available
             if (historyData.settings) {
@@ -654,59 +680,148 @@ class ChatApp {
             return;
         }
 
-        // Disable input while processing
-        this.setInputState(false);
+        // Capture current session context for this request
+        const requestSessionId = this.sessionId; // May be null for new chat
+        const selectedModel = this.modelSelect.value;
+        const requestSettings = { ...this.generationSettings };
+        const requestPreset = this.currentPreset; // "standard" or "coding"
 
-        // Add user message to chat
+        // Add user message to current chat view
         this.addMessage(message, 'user');
 
-        // Clear input
+        // Clear input immediately (don't block user)
         this.messageInput.value = '';
 
-        // Show loading indicator
+        // Show loading indicator for current chat
         this.showLoadingIndicator();
 
+        // Mark this session as having pending request
+        const tempSessionKey = requestSessionId || `new_${Date.now()}`;
+        this.pendingRequests.set(tempSessionKey, { message, startTime: Date.now() });
+        this.updateConversationLoadingState();
+
         try {
-            // Get selected model
-            const selectedModel = this.modelSelect.value;
+            // Send message to API (async, don't block)
+            const response = await this.sendMessageAsync(message, selectedModel, requestSessionId, requestSettings, requestPreset);
 
-            // Send message to API
-            const response = await this.sendMessage(message, selectedModel);
+            // Get the actual session ID from response
+            const responseSessionId = response.sessionId;
 
-            // Hide loading indicator
-            this.hideLoadingIndicator();
+            // Remove from pending
+            this.pendingRequests.delete(tempSessionKey);
+            if (responseSessionId !== tempSessionKey) {
+                this.pendingRequests.delete(responseSessionId);
+            }
 
-            // Add assistant response to chat with model info and stats
-            this.addMessage(response.response, 'assistant', response.model, {
-                inputTokens: response.inputTokens,
-                outputTokens: response.outputTokens,
-                totalTokens: response.totalTokens,
-                responseTimeMs: response.responseTimeMs,
-                historyCompressed: response.historyCompressed
-            });
+            // Check if user is still viewing the same chat
+            const isCurrentChat = (requestSessionId === null && this.sessionId === responseSessionId) ||
+                                  (requestSessionId === this.sessionId);
 
-            // Reload conversations list to update it
+            if (isCurrentChat) {
+                // User is still in the same chat - update UI directly
+                this.hideLoadingIndicator();
+                this.addMessage(response.response, 'assistant', response.model, {
+                    inputTokens: response.inputTokens,
+                    outputTokens: response.outputTokens,
+                    totalTokens: response.totalTokens,
+                    responseTimeMs: response.responseTimeMs,
+                    historyCompressed: response.historyCompressed
+                });
+
+                // Update sessionId if this was a new chat
+                if (requestSessionId === null) {
+                    this.sessionId = responseSessionId;
+                    this.updateHistoryButton();
+                }
+            } else {
+                // User switched to different chat - response goes to the original chat
+                // Just update the conversations list to show it has new messages
+                console.log(`Response received for chat ${responseSessionId}, but user is in ${this.sessionId}`);
+            }
+
+            // Reload conversations list to update titles and unread counts
             await this.loadConversations();
 
-            // Update title if it's a new conversation
-            const conv = this.conversations.find(c => c.sessionId === this.sessionId);
-            if (conv && conv.title) {
-                this.chatTitle.textContent = conv.title;
+            // Update title if viewing the response chat
+            if (isCurrentChat) {
+                const conv = this.conversations.find(c => c.sessionId === responseSessionId);
+                if (conv && conv.title) {
+                    this.chatTitle.textContent = conv.title;
+                }
             }
         } catch (error) {
-            // Hide loading indicator
-            this.hideLoadingIndicator();
+            // Remove from pending
+            this.pendingRequests.delete(tempSessionKey);
 
-            console.error('Error:', error);
-            this.addMessage(
-                `Ошибка: ${error.message || 'Не удалось получить ответ'}`,
-                'error'
-            );
+            // Only show error if user is still in the same chat
+            const isCurrentChat = requestSessionId === this.sessionId ||
+                                  (requestSessionId === null && !this.sessionId);
+
+            if (isCurrentChat) {
+                this.hideLoadingIndicator();
+                console.error('Error:', error);
+                this.addMessage(
+                    `Ошибка: ${error.message || 'Не удалось получить ответ'}`,
+                    'error'
+                );
+            } else {
+                console.error(`Error in background chat ${requestSessionId}:`, error);
+            }
         } finally {
-            // Re-enable input
-            this.setInputState(true);
-            this.messageInput.focus();
+            this.updateConversationLoadingState();
         }
+    }
+
+    /**
+     * Send message asynchronously with isolated context
+     */
+    async sendMessageAsync(message, model, sessionId, settings, preset) {
+        const requestBody = {
+            message,
+            model,
+            provider: this.currentProvider,
+            preset,  // "standard" или "coding"
+            options: {
+                temperature: settings.temperature,
+                topP: settings.topP,
+                topK: settings.topK,
+                repeatPenalty: settings.repeatPenalty,
+                maxTokens: settings.maxTokens,
+                numCtx: settings.numCtx
+            }
+        };
+
+        if (sessionId) {
+            requestBody.sessionId = sessionId;
+        }
+
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Server error');
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Update loading indicators in conversation list
+     */
+    updateConversationLoadingState() {
+        this.conversations.forEach(conv => {
+            const convItem = document.querySelector(`[data-session-id="${conv.sessionId}"]`);
+            if (convItem) {
+                const isPending = this.pendingRequests.has(conv.sessionId);
+                convItem.classList.toggle('loading', isPending);
+            }
+        });
     }
 
     async handleCommand(commandText) {
@@ -1136,8 +1251,8 @@ class ChatApp {
         if (systemPrompt) {
             requestBody.systemPrompt = systemPrompt;
         }
-        // Send coding mode flag
-        requestBody.codingMode = this.codingMode;
+        // Send preset (determines system prompt and default options)
+        requestBody.preset = this.currentPreset;
         // Send generation options
         requestBody.options = {
             temperature: this.generationSettings.temperature,

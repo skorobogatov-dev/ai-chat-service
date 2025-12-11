@@ -105,7 +105,8 @@ fun Route.chatRoutes(
                 logger.debug("Using session: ${session.sessionId}, isNew: $isNewSession")
 
                 // Сохранить настройки сессии если они переданы
-                val sessionSettings = if (request.options != null || request.codingMode || request.model != null) {
+                val sessionPreset = request.preset ?: if (request.codingMode) "coding" else "standard"
+                val sessionSettings = if (request.options != null || request.preset != null || request.codingMode || request.model != null) {
                     SessionSettings(
                         model = request.model,
                         temperature = request.options?.temperature,
@@ -114,8 +115,8 @@ fun Route.chatRoutes(
                         repeatPenalty = request.options?.repeatPenalty,
                         maxTokens = request.options?.maxTokens,
                         numCtx = request.options?.numCtx,
-                        preset = if (request.codingMode) "coding" else "standard",
-                        codingMode = request.codingMode
+                        preset = sessionPreset,
+                        codingMode = sessionPreset == "coding"
                     )
                 } else {
                     session.settings
@@ -282,15 +283,19 @@ fun Route.chatRoutes(
                     )
                 }
 
+                // Определяем эффективный пресет
+                val effectivePreset = request.preset ?: if (request.codingMode) "coding" else "standard"
+
                 // Определить, какой провайдер использовать
                 val apiResponse = if (useOllama && ollamaChatService != null) {
                     // Использовать локальную Ollama LLM
-                    logger.info("Using Ollama for chat generation (codingMode: ${request.codingMode})")
+                    logger.info("Using Ollama for chat generation (preset: $effectivePreset)")
                     ollamaChatService.sendMessage(
                         messages = allMessages,
                         systemPrompt = enrichedSystemPrompt,
                         requestModel = request.model,
                         options = ollamaOptions,
+                        preset = effectivePreset,
                         codingMode = request.codingMode
                     )
                 } else {

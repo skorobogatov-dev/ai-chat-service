@@ -42,49 +42,116 @@ class OllamaChatService(
             repeat_penalty = 1.15
         )
 
+        // Системный промпт для стандартного режима
+        const val STANDARD_SYSTEM_PROMPT = """Ты полезный AI-ассистент. Следуй этим принципам:
+
+1. ЯСНОСТЬ: Отвечай понятно и структурированно. Используй списки и заголовки где уместно.
+2. ПОЛНОТА: Давай исчерпывающие ответы, но не перегружай лишними деталями.
+3. ЧЕСТНОСТЬ: Если не знаешь ответ - скажи об этом. Не выдумывай факты.
+4. ДРУЖЕЛЮБИЕ: Будь вежливым и готовым помочь.
+5. ЯЗЫК: Отвечай на языке вопроса пользователя.
+
+Твоя цель - быть максимально полезным собеседником."""
+
         // Системный промпт для режима программирования
-        const val CODING_SYSTEM_PROMPT = """Ты опытный программист-помощник. Следуй этим правилам:
+        const val CODING_SYSTEM_PROMPT = """Ты senior software engineer с 15+ годами опыта. Твой подход - всегда технический и практический.
 
-1. ТОЧНОСТЬ: Используй только реальные, существующие библиотеки и функции. Никогда не придумывай API.
-2. КОД: Давай рабочий, проверенный код. Если не уверен - скажи об этом.
-3. КРАТКОСТЬ: Отвечай по существу, без лишних вступлений.
-4. ОШИБКИ: Если видишь ошибку в коде пользователя - укажи на неё.
-5. ЯЗЫК: Отвечай на русском, код и термины на английском.
+## СТИЛЬ ОТВЕТОВ
+- Отвечай как техлид на code review: конкретно, по делу, с примерами кода
+- Любой вопрос рассматривай с технической точки зрения
+- Называй конкретные технологии, библиотеки, фреймворки, паттерны
+- Указывай версии, если это важно для совместимости
+- Упоминай trade-offs и альтернативные решения
 
-Если не знаешь точного ответа - честно скажи "Я не уверен" вместо галлюцинаций."""
+## СТРУКТУРА ОТВЕТА
+1. Краткое решение (1-2 предложения)
+2. Код с комментариями
+3. Технические детали: сложность O(), память, производительность
+4. Потенциальные проблемы и edge cases
+5. Альтернативы (если есть лучшие подходы)
+
+## ПРАВИЛА КОДА
+- Только рабочий, production-ready код
+- Используй современные best practices и идиомы языка
+- Добавляй обработку ошибок и валидацию
+- Указывай необходимые import/dependencies
+- Код-блоки с указанием языка: ```kotlin, ```python, etc.
+
+## ТЕХНИЧЕСКИЙ ФОКУС
+- Big O notation для алгоритмов
+- Паттерны проектирования где уместно (Singleton, Factory, Observer...)
+- Архитектурные принципы (SOLID, DRY, KISS)
+- Безопасность (SQL injection, XSS, CSRF...)
+- Тестируемость и maintainability
+
+## ЧЕСТНОСТЬ
+Если не уверен в точности информации - скажи прямо. Лучше "нужно проверить в документации X" чем галлюцинация.
+
+Язык: объяснения на русском, код и термины на английском."""
+
+        /**
+         * Получить системный промпт по названию пресета
+         */
+        fun getSystemPromptForPreset(preset: String?): String? {
+            return when (preset?.lowercase()) {
+                "coding" -> CODING_SYSTEM_PROMPT
+                "standard" -> STANDARD_SYSTEM_PROMPT
+                else -> null
+            }
+        }
+
+        /**
+         * Получить опции генерации по названию пресета
+         */
+        fun getOptionsForPreset(preset: String?): OllamaChatOptions {
+            return when (preset?.lowercase()) {
+                "coding" -> CODING_OPTIONS
+                else -> DEFAULT_OPTIONS
+            }
+        }
     }
 
     /**
      * Отправить сообщение в Ollama и получить ответ
+     *
+     * @param messages История сообщений
+     * @param systemPrompt Пользовательский системный промпт (переопределяет preset)
+     * @param requestModel Модель для использования
+     * @param options Пользовательские опции генерации (переопределяют preset)
+     * @param preset Название пресета: "standard", "coding"
+     * @param codingMode Deprecated: используйте preset="coding"
      */
     suspend fun sendMessage(
         messages: List<ClaudeMessage>,
         systemPrompt: String? = null,
         requestModel: String? = null,
         options: OllamaChatOptions? = null,
+        preset: String? = null,
         codingMode: Boolean = false
     ): ChatResponse {
         val startTime = System.currentTimeMillis()
         val effectiveModel = requestModel ?: defaultModel
 
-        // Определяем системный промпт
-        val effectiveSystemPrompt = when {
-            systemPrompt != null -> systemPrompt
-            codingMode -> CODING_SYSTEM_PROMPT
-            else -> defaultSystemPrompt
+        // Определяем эффективный пресет (codingMode для обратной совместимости)
+        val effectivePreset = when {
+            preset != null -> preset
+            codingMode -> "coding"
+            else -> "standard"
         }
 
-        // Определяем опции генерации
-        val effectiveOptions = when {
-            options != null -> options
-            codingMode -> CODING_OPTIONS
-            else -> DEFAULT_OPTIONS
-        }.let { baseOptions ->
+        // Определяем системный промпт (приоритет: пользовательский > пресет > дефолтный)
+        val effectiveSystemPrompt = when {
+            systemPrompt != null -> systemPrompt
+            else -> getSystemPromptForPreset(effectivePreset) ?: defaultSystemPrompt
+        }
+
+        // Определяем опции генерации (приоритет: пользовательские > пресет)
+        val effectiveOptions = (options ?: getOptionsForPreset(effectivePreset)).let { baseOptions ->
             // Применяем maxTokens
             baseOptions.copy(num_predict = baseOptions.num_predict ?: maxTokens)
         }
 
-        logger.debug("Sending ${messages.size} messages to Ollama (model: $effectiveModel, codingMode: $codingMode)")
+        logger.debug("Sending ${messages.size} messages to Ollama (model: $effectiveModel, preset: $effectivePreset)")
         logger.debug("Options: temp=${effectiveOptions.temperature}, ctx=${effectiveOptions.num_ctx}, top_p=${effectiveOptions.top_p}")
 
         // Конвертируем ClaudeMessage в OllamaChatMessage
