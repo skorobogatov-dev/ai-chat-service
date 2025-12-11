@@ -20,6 +20,51 @@ class ChatApp {
         this.currentProvider = 'ollama'; // Always use Ollama
         this.ollamaModels = []; // Cached Ollama models
 
+        // Settings modal elements
+        this.settingsModal = document.getElementById('settingsModal');
+        this.openSettingsButton = document.getElementById('openSettingsButton');
+        this.closeSettingsButton = document.getElementById('closeSettingsButton');
+        this.saveSettingsButton = document.getElementById('saveSettingsButton');
+        this.resetSettingsButton = document.getElementById('resetSettingsButton');
+        this.currentModelDisplay = document.getElementById('currentModelDisplay');
+        this.currentPresetDisplay = document.getElementById('currentPresetDisplay');
+
+        // Generation settings with defaults
+        this.generationSettings = {
+            temperature: 0.7,
+            topP: 0.9,
+            topK: 40,
+            repeatPenalty: 1.1,
+            maxTokens: 2048,
+            numCtx: 4096
+        };
+
+        // Presets
+        this.presets = {
+            standard: {
+                temperature: 0.7,
+                topP: 0.9,
+                topK: 40,
+                repeatPenalty: 1.1,
+                maxTokens: 2048,
+                numCtx: 4096,
+                codingMode: false
+            },
+            coding: {
+                temperature: 0.1,
+                topP: 0.95,
+                topK: 20,
+                repeatPenalty: 1.15,
+                maxTokens: 4096,
+                numCtx: 8192,
+                codingMode: true
+            }
+        };
+
+        this.currentPreset = 'standard';
+        this.codingMode = false;
+        this.settingsExpanded = false;
+
         this.init();
     }
 
@@ -34,6 +79,12 @@ class ChatApp {
             }
         });
 
+        // Initialize settings panel
+        this.initSettingsPanel();
+
+        // Load saved settings from localStorage
+        this.loadSettings();
+
         // Load conversations list
         await this.loadConversations();
 
@@ -45,6 +96,223 @@ class ChatApp {
 
         // Start polling for conversation updates every 3 seconds
         this.startPolling();
+    }
+
+    /**
+     * Initialize settings modal
+     */
+    initSettingsPanel() {
+        // Open settings modal
+        if (this.openSettingsButton) {
+            this.openSettingsButton.addEventListener('click', () => this.openSettingsModal());
+        }
+
+        // Close settings modal
+        if (this.closeSettingsButton) {
+            this.closeSettingsButton.addEventListener('click', () => this.closeSettingsModal());
+        }
+
+        // Close on backdrop click
+        if (this.settingsModal) {
+            this.settingsModal.addEventListener('click', (e) => {
+                if (e.target === this.settingsModal) {
+                    this.closeSettingsModal();
+                }
+            });
+        }
+
+        // Save button
+        if (this.saveSettingsButton) {
+            this.saveSettingsButton.addEventListener('click', () => {
+                this.saveSettings();
+                this.closeSettingsModal();
+            });
+        }
+
+        // Reset button
+        if (this.resetSettingsButton) {
+            this.resetSettingsButton.addEventListener('click', () => this.applyPreset('standard'));
+        }
+
+        // Preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.applyPreset(btn.dataset.preset));
+        });
+
+        // Model select change
+        if (this.modelSelect) {
+            this.modelSelect.addEventListener('change', () => {
+                this.updateDisplays();
+            });
+        }
+
+        // Sliders
+        const sliders = [
+            { id: 'temperatureSlider', key: 'temperature', valueId: 'temperatureValue' },
+            { id: 'topPSlider', key: 'topP', valueId: 'topPValue' },
+            { id: 'topKSlider', key: 'topK', valueId: 'topKValue' },
+            { id: 'repeatPenaltySlider', key: 'repeatPenalty', valueId: 'repeatPenaltyValue' },
+            { id: 'maxTokensSlider', key: 'maxTokens', valueId: 'maxTokensValue' },
+            { id: 'numCtxSlider', key: 'numCtx', valueId: 'numCtxValue' }
+        ];
+
+        sliders.forEach(({ id, key, valueId }) => {
+            const slider = document.getElementById(id);
+            const valueDisplay = document.getElementById(valueId);
+            if (slider && valueDisplay) {
+                slider.addEventListener('input', () => {
+                    const value = parseFloat(slider.value);
+                    valueDisplay.textContent = value;
+                    this.generationSettings[key] = value;
+                    // Mark as custom preset when user changes sliders
+                    this.markCustomPreset();
+                });
+            }
+        });
+    }
+
+    /**
+     * Open settings modal
+     */
+    openSettingsModal() {
+        if (this.settingsModal) {
+            this.settingsModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    /**
+     * Close settings modal
+     */
+    closeSettingsModal() {
+        if (this.settingsModal) {
+            this.settingsModal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+    }
+
+    /**
+     * Apply preset
+     */
+    applyPreset(presetName) {
+        const preset = this.presets[presetName];
+        if (!preset) return;
+
+        this.currentPreset = presetName;
+        this.codingMode = preset.codingMode;
+        this.generationSettings = { ...preset };
+        delete this.generationSettings.codingMode;
+
+        // Update sliders
+        this.updateSliders();
+
+        // Update preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.preset === presetName);
+        });
+
+        // Update displays
+        this.updateDisplays();
+    }
+
+    /**
+     * Mark custom preset when user changes sliders
+     */
+    markCustomPreset() {
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        this.currentPreset = 'custom';
+        this.updateDisplays();
+    }
+
+    /**
+     * Update display elements in the input area
+     */
+    updateDisplays() {
+        // Update model display
+        if (this.currentModelDisplay && this.modelSelect) {
+            this.currentModelDisplay.textContent = this.modelSelect.value;
+        }
+
+        // Update preset display
+        if (this.currentPresetDisplay) {
+            const presetNames = {
+                standard: '📝 Стандартный',
+                coding: '💻 Программист',
+                custom: '🔧 Свой'
+            };
+            this.currentPresetDisplay.textContent = presetNames[this.currentPreset] || this.currentPreset;
+        }
+    }
+
+    /**
+     * Update sliders to match current settings
+     */
+    updateSliders() {
+        const sliders = [
+            { id: 'temperatureSlider', key: 'temperature', valueId: 'temperatureValue' },
+            { id: 'topPSlider', key: 'topP', valueId: 'topPValue' },
+            { id: 'topKSlider', key: 'topK', valueId: 'topKValue' },
+            { id: 'repeatPenaltySlider', key: 'repeatPenalty', valueId: 'repeatPenaltyValue' },
+            { id: 'maxTokensSlider', key: 'maxTokens', valueId: 'maxTokensValue' },
+            { id: 'numCtxSlider', key: 'numCtx', valueId: 'numCtxValue' }
+        ];
+
+        sliders.forEach(({ id, key, valueId }) => {
+            const slider = document.getElementById(id);
+            const valueDisplay = document.getElementById(valueId);
+            if (slider && valueDisplay && this.generationSettings[key] !== undefined) {
+                slider.value = this.generationSettings[key];
+                valueDisplay.textContent = this.generationSettings[key];
+            }
+        });
+    }
+
+    /**
+     * Save settings to localStorage
+     */
+    saveSettings() {
+        const settings = {
+            generationSettings: this.generationSettings,
+            currentPreset: this.currentPreset,
+            codingMode: this.codingMode,
+            model: this.modelSelect?.value
+        };
+        localStorage.setItem('chatSettings', JSON.stringify(settings));
+        this.updateDisplays();
+    }
+
+    /**
+     * Load settings from localStorage
+     */
+    loadSettings() {
+        try {
+            const saved = localStorage.getItem('chatSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                this.generationSettings = settings.generationSettings || this.generationSettings;
+                this.currentPreset = settings.currentPreset || 'standard';
+                this.codingMode = settings.codingMode || false;
+
+                // Load saved model
+                if (settings.model && this.modelSelect) {
+                    this.modelSelect.value = settings.model;
+                }
+
+                this.updateSliders();
+
+                // Update preset buttons
+                document.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.preset === this.currentPreset);
+                });
+
+                // Update displays
+                this.updateDisplays();
+            }
+        } catch (e) {
+            console.error('Error loading settings:', e);
+        }
     }
 
     startPolling() {
@@ -237,6 +505,11 @@ class ChatApp {
                 this.addMessage(msg.content, type, null, null, false);
             });
 
+            // Load session settings if available
+            if (historyData.settings) {
+                this.applySessionSettings(historyData.settings);
+            }
+
             // Mark all messages as read
             try {
                 await fetch(`/api/chat/mark-read/${sessionId}`, {
@@ -256,6 +529,55 @@ class ChatApp {
             console.error('Error switching conversation:', error);
             alert('Не удалось загрузить диалог');
         }
+    }
+
+    /**
+     * Apply settings from session to current UI
+     */
+    applySessionSettings(settings) {
+        // Apply generation settings
+        if (settings.temperature !== null && settings.temperature !== undefined) {
+            this.generationSettings.temperature = settings.temperature;
+        }
+        if (settings.topP !== null && settings.topP !== undefined) {
+            this.generationSettings.topP = settings.topP;
+        }
+        if (settings.topK !== null && settings.topK !== undefined) {
+            this.generationSettings.topK = settings.topK;
+        }
+        if (settings.repeatPenalty !== null && settings.repeatPenalty !== undefined) {
+            this.generationSettings.repeatPenalty = settings.repeatPenalty;
+        }
+        if (settings.maxTokens !== null && settings.maxTokens !== undefined) {
+            this.generationSettings.maxTokens = settings.maxTokens;
+        }
+        if (settings.numCtx !== null && settings.numCtx !== undefined) {
+            this.generationSettings.numCtx = settings.numCtx;
+        }
+
+        // Apply model
+        if (settings.model && this.modelSelect) {
+            // Check if model exists in dropdown
+            const modelOption = Array.from(this.modelSelect.options).find(opt => opt.value === settings.model);
+            if (modelOption) {
+                this.modelSelect.value = settings.model;
+            }
+        }
+
+        // Apply preset and coding mode
+        if (settings.preset) {
+            this.currentPreset = settings.preset;
+        }
+        if (settings.codingMode !== null && settings.codingMode !== undefined) {
+            this.codingMode = settings.codingMode;
+        }
+
+        // Update UI
+        this.updateSliders();
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.preset === this.currentPreset);
+        });
+        this.updateDisplays();
     }
 
     async deleteConversation(sessionId) {
@@ -814,6 +1136,17 @@ class ChatApp {
         if (systemPrompt) {
             requestBody.systemPrompt = systemPrompt;
         }
+        // Send coding mode flag
+        requestBody.codingMode = this.codingMode;
+        // Send generation options
+        requestBody.options = {
+            temperature: this.generationSettings.temperature,
+            topP: this.generationSettings.topP,
+            topK: this.generationSettings.topK,
+            repeatPenalty: this.generationSettings.repeatPenalty,
+            maxTokens: this.generationSettings.maxTokens,
+            numCtx: this.generationSettings.numCtx
+        };
 
         const response = await fetch('/api/chat', {
             method: 'POST',

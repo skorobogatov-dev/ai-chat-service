@@ -104,6 +104,29 @@ fun Route.chatRoutes(
                 val isNewSession = request.sessionId == null
                 logger.debug("Using session: ${session.sessionId}, isNew: $isNewSession")
 
+                // Сохранить настройки сессии если они переданы
+                val sessionSettings = if (request.options != null || request.codingMode || request.model != null) {
+                    SessionSettings(
+                        model = request.model,
+                        temperature = request.options?.temperature,
+                        topP = request.options?.topP,
+                        topK = request.options?.topK,
+                        repeatPenalty = request.options?.repeatPenalty,
+                        maxTokens = request.options?.maxTokens,
+                        numCtx = request.options?.numCtx,
+                        preset = if (request.codingMode) "coding" else "standard",
+                        codingMode = request.codingMode
+                    )
+                } else {
+                    session.settings
+                }
+
+                // Обновить настройки сессии
+                if (sessionSettings != null) {
+                    session.settings = sessionSettings
+                    historyService.saveSession(session)
+                }
+
                 // Добавить сообщение пользователя в историю
                 historyService.addUserMessage(session.sessionId, request.message)
 
@@ -247,11 +270,29 @@ fun Route.chatRoutes(
                 // Получить все сообщения для отправки в API
                 val allMessages = session.toClaudeMessages()
 
+                // Конвертировать GenerationOptions в OllamaChatOptions
+                val ollamaOptions = request.options?.let { opts ->
+                    dev.skorobogatov.models.OllamaChatOptions(
+                        temperature = opts.temperature,
+                        num_predict = opts.maxTokens,
+                        num_ctx = opts.numCtx,
+                        top_p = opts.topP,
+                        top_k = opts.topK,
+                        repeat_penalty = opts.repeatPenalty
+                    )
+                }
+
                 // Определить, какой провайдер использовать
                 val apiResponse = if (useOllama && ollamaChatService != null) {
                     // Использовать локальную Ollama LLM
-                    logger.info("Using Ollama for chat generation")
-                    ollamaChatService.sendMessage(allMessages, enrichedSystemPrompt, request.model)
+                    logger.info("Using Ollama for chat generation (codingMode: ${request.codingMode})")
+                    ollamaChatService.sendMessage(
+                        messages = allMessages,
+                        systemPrompt = enrichedSystemPrompt,
+                        requestModel = request.model,
+                        options = ollamaOptions,
+                        codingMode = request.codingMode
+                    )
                 } else {
                     // Использовать Claude API (с поддержкой MCP tools)
                     val connectionStatus = mcpService.getConnectionStatus()
@@ -327,7 +368,7 @@ fun Route.chatRoutes(
                     }
                 }
 
-                // Создать ответ с sessionId, RAG и reranking информацией
+                // Создать ответ с sessionId, RAG, reranking информацией и настройками сессии
                 val response = apiResponse.copy(
                     sessionId = session.sessionId,
                     historyCompressed = historyCompressed,
@@ -336,7 +377,8 @@ fun Route.chatRoutes(
                     ragSources = ragSources,
                     ragChunks = ragChunks,
                     rerankingUsed = rerankingUsed,
-                    rerankingTimeMs = rerankingTimeMs
+                    rerankingTimeMs = rerankingTimeMs,
+                    settings = session.settings
                 )
 
                 call.respond(HttpStatusCode.OK, response)
@@ -382,7 +424,8 @@ fun Route.chatRoutes(
                 messageCount = session.messages.size,
                 pairsCount = session.getMessagePairsCount(),
                 createdAt = session.createdAt,
-                lastAccessedAt = session.lastAccessedAt
+                lastAccessedAt = session.lastAccessedAt,
+                settings = session.settings
             )
 
             call.respond(HttpStatusCode.OK, response)

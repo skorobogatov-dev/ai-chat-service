@@ -9,7 +9,8 @@ data class HistoryResponse(
     val messageCount: Int,
     val pairsCount: Int,
     val createdAt: Long,
-    val lastAccessedAt: Long
+    val lastAccessedAt: Long,
+    val settings: SessionSettings? = null
 )
 
 @Serializable

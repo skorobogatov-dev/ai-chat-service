@@ -26,6 +26,22 @@ data class HistoryMessage(
 )
 
 /**
+ * Настройки генерации для сессии
+ */
+@Serializable
+data class SessionSettings(
+    val model: String? = null,
+    val temperature: Double? = null,
+    val topP: Double? = null,
+    val topK: Int? = null,
+    val repeatPenalty: Double? = null,
+    val maxTokens: Int? = null,
+    val numCtx: Int? = null,
+    val preset: String? = null,  // "standard", "coding", "custom"
+    val codingMode: Boolean = false
+)
+
+/**
  * История одного диалога
  */
 @Serializable
@@ -35,7 +51,8 @@ data class ConversationHistory(
     val messages: MutableList<HistoryMessage> = mutableListOf(),
     val createdAt: Long = System.currentTimeMillis(),
     var lastAccessedAt: Long = System.currentTimeMillis(),
-    var lastReadMessageIndex: Int = -1  // Индекс последнего прочитанного сообщения
+    var lastReadMessageIndex: Int = -1,  // Индекс последнего прочитанного сообщения
+    var settings: SessionSettings? = null  // Настройки генерации для этой сессии
 ) {
     /**
      * Добавить сообщение в историю

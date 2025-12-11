@@ -30,7 +30,7 @@ class ConversationHistoryService(
     /**
      * Сохранить сессию в файл (если fileStorageService доступен)
      */
-    private fun saveSession(session: ConversationHistory) {
+    fun saveSession(session: ConversationHistory) {
         fileStorageService?.saveConversation(session)
     }
 

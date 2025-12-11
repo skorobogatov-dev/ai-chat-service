@@ -28,13 +28,18 @@ data class OllamaChatMessage(
 
 /**
  * Опции генерации для Ollama
+ * https://github.com/ollama/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values
  */
 @Serializable
 data class OllamaChatOptions(
-    val temperature: Double? = null,
-    val num_predict: Int? = null,  // аналог max_tokens
-    val top_p: Double? = null,
-    val top_k: Int? = null
+    val temperature: Double? = null,      // Креативность (0.0-2.0, default: 0.8)
+    val num_predict: Int? = null,         // Max tokens в ответе (default: 128, -1 = infinite)
+    val num_ctx: Int? = null,             // Размер контекстного окна (default: 2048)
+    val top_p: Double? = null,            // Nucleus sampling (0.0-1.0, default: 0.9)
+    val top_k: Int? = null,               // Top-K sampling (default: 40)
+    val repeat_penalty: Double? = null,   // Штраф за повторения (default: 1.1)
+    val seed: Int? = null,                // Seed для воспроизводимости
+    val stop: List<String>? = null        // Stop sequences
 )
 
 /**

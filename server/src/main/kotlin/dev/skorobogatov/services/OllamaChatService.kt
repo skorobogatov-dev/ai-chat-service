@@ -22,19 +22,70 @@ class OllamaChatService(
     private val chatUrl = "$baseUrl/api/chat"
     private val tagsUrl = "$baseUrl/api/tags"
 
+    // Дефолтные параметры для обычного режима
+    companion object {
+        // Стандартный режим - сбалансированные настройки
+        val DEFAULT_OPTIONS = OllamaChatOptions(
+            temperature = 0.7,
+            num_ctx = 4096,
+            top_p = 0.9,
+            top_k = 40,
+            repeat_penalty = 1.1
+        )
+
+        // Режим программирования - точные, детерминированные ответы
+        val CODING_OPTIONS = OllamaChatOptions(
+            temperature = 0.1,
+            num_ctx = 8192,
+            top_p = 0.95,
+            top_k = 20,
+            repeat_penalty = 1.15
+        )
+
+        // Системный промпт для режима программирования
+        const val CODING_SYSTEM_PROMPT = """Ты опытный программист-помощник. Следуй этим правилам:
+
+1. ТОЧНОСТЬ: Используй только реальные, существующие библиотеки и функции. Никогда не придумывай API.
+2. КОД: Давай рабочий, проверенный код. Если не уверен - скажи об этом.
+3. КРАТКОСТЬ: Отвечай по существу, без лишних вступлений.
+4. ОШИБКИ: Если видишь ошибку в коде пользователя - укажи на неё.
+5. ЯЗЫК: Отвечай на русском, код и термины на английском.
+
+Если не знаешь точного ответа - честно скажи "Я не уверен" вместо галлюцинаций."""
+    }
+
     /**
      * Отправить сообщение в Ollama и получить ответ
      */
     suspend fun sendMessage(
         messages: List<ClaudeMessage>,
         systemPrompt: String? = null,
-        requestModel: String? = null
+        requestModel: String? = null,
+        options: OllamaChatOptions? = null,
+        codingMode: Boolean = false
     ): ChatResponse {
         val startTime = System.currentTimeMillis()
         val effectiveModel = requestModel ?: defaultModel
-        val effectiveSystemPrompt = systemPrompt ?: defaultSystemPrompt
 
-        logger.debug("Sending ${messages.size} messages to Ollama (model: $effectiveModel)")
+        // Определяем системный промпт
+        val effectiveSystemPrompt = when {
+            systemPrompt != null -> systemPrompt
+            codingMode -> CODING_SYSTEM_PROMPT
+            else -> defaultSystemPrompt
+        }
+
+        // Определяем опции генерации
+        val effectiveOptions = when {
+            options != null -> options
+            codingMode -> CODING_OPTIONS
+            else -> DEFAULT_OPTIONS
+        }.let { baseOptions ->
+            // Применяем maxTokens
+            baseOptions.copy(num_predict = baseOptions.num_predict ?: maxTokens)
+        }
+
+        logger.debug("Sending ${messages.size} messages to Ollama (model: $effectiveModel, codingMode: $codingMode)")
+        logger.debug("Options: temp=${effectiveOptions.temperature}, ctx=${effectiveOptions.num_ctx}, top_p=${effectiveOptions.top_p}")
 
         // Конвертируем ClaudeMessage в OllamaChatMessage
         val ollamaMessages = mutableListOf<OllamaChatMessage>()
@@ -56,9 +107,7 @@ class OllamaChatService(
             model = effectiveModel,
             messages = ollamaMessages,
             stream = false,
-            options = OllamaChatOptions(
-                num_predict = maxTokens
-            )
+            options = effectiveOptions
         )
 
         return try {

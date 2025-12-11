@@ -32,5 +32,6 @@ data class ChatResponse(
     val ragSources: List<String> = emptyList(),  // Источники для RAG (имена файлов)
     val ragChunks: List<RAGChunkReference> = emptyList(),  // Детальная информация о найденных чанках с цитатами
     val rerankingUsed: Boolean = false,  // Был ли использован reranking
-    val rerankingTimeMs: Long = 0  // Время reranking в миллисекундах
+    val rerankingTimeMs: Long = 0,  // Время reranking в миллисекундах
+    val settings: SessionSettings? = null  // Текущие настройки сессии
 )
