@@ -6,12 +6,13 @@ import org.slf4j.LoggerFactory
 
 /**
  * Обработчик команд в чате
- * Поддерживает команды типа /help, /dev и т.д.
+ * Поддерживает команды типа /help, /dev, /analytics и т.д.
  */
 class CommandHandler(
     private val mcpService: MCPService,
     private val claudeService: ClaudeService,
-    private val appsService: AppsService? = null
+    private val appsService: AppsService? = null,
+    private val analyticsService: AnalyticsService? = null
 ) {
     private val logger = LoggerFactory.getLogger(CommandHandler::class.java)
 
@@ -38,7 +39,8 @@ class CommandHandler(
         return when (commandName) {
             "/help" -> handleHelpCommand(args)
             "/dev" -> handleDevCommand(args)
-            else -> CommandResult.error("Неизвестная команда: $commandName\n\nДоступные команды:\n- /help [вопрос] - помощь по структуре проекта\n- /dev [описание] - создать веб-приложение\n- /dev list - список приложений\n- /dev edit [имя] [изменения] - редактировать приложение\n- /dev delete [имя] - удалить приложение")
+            "/analytics", "/a" -> handleAnalyticsCommand(args)
+            else -> CommandResult.error("Неизвестная команда: $commandName\n\nДоступные команды:\n- /help [вопрос] - помощь по структуре проекта\n- /dev [описание] - создать веб-приложение\n- /analytics [вопрос] - аналитика по тикетам (или /a)\n- /analytics stats - статистика по тикетам")
         }
     }
 
@@ -564,6 +566,167 @@ class CommandHandler(
                     )
                 }
             }
+    }
+
+    // ========== КОМАНДА /analytics - АНАЛИТИКА ТИКЕТОВ ==========
+
+    /**
+     * Обрабатывает команду /analytics
+     * Позволяет задавать аналитические вопросы по тикетам
+     */
+    private suspend fun handleAnalyticsCommand(args: String): CommandResult {
+        if (analyticsService == null) {
+            return CommandResult.error("Сервис аналитики не инициализирован. Дождитесь загрузки данных.")
+        }
+
+        val status = analyticsService.getStatus()
+        if (!status.initialized) {
+            return CommandResult.error("Аналитика загружается... Попробуйте через несколько секунд.\nСтатус: ${status.vectorizedTickets}/${status.totalTickets} тикетов векторизовано.")
+        }
+
+        if (args.isBlank()) {
+            return showAnalyticsHelp(status)
+        }
+
+        val subCommand = args.split(" ", limit = 2)[0].lowercase()
+
+        return when (subCommand) {
+            "stats", "статистика" -> handleAnalyticsStats()
+            "status", "статус" -> handleAnalyticsStatus()
+            else -> handleAnalyticsQuery(args)
+        }
+    }
+
+    /**
+     * Показать справку по команде /analytics
+     */
+    private fun showAnalyticsHelp(status: dev.skorobogatov.models.AnalyticsStatus): CommandResult {
+        return CommandResult.success(
+            """
+            📊 Команда /analytics - аналитика тикетов
+
+            **Использование:**
+            `/analytics <вопрос>` или `/a <вопрос>` - задать вопрос
+
+            **Примеры вопросов:**
+            - `/a какая ошибка чаще всего?`
+            - `/a топ-3 проблемы пользователей`
+            - `/a где пользователи теряются в воронке?`
+            - `/a проблемы premium пользователей`
+            - `/a среднее время решения критических тикетов`
+
+            **Подкоманды:**
+            - `/analytics stats` - статистика по всем тикетам
+            - `/analytics status` - статус системы
+
+            **Текущий статус:**
+            ✅ Загружено: ${status.totalTickets} тикетов
+            🔢 Векторизовано: ${status.vectorizedTickets}
+            📐 Размерность: ${status.embeddingDimension}
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * Статистика по тикетам
+     */
+    private fun handleAnalyticsStats(): CommandResult {
+        val stats = analyticsService!!.getStats()
+
+        val topErrors = stats.topErrorCodes.take(5).joinToString("\n") {
+            "   • ${it.errorCode}: ${it.count} шт."
+        }
+
+        val byCategory = stats.byCategory.entries
+            .sortedByDescending { it.value }
+            .take(5)
+            .joinToString("\n") { "   • ${it.key}: ${it.value}" }
+
+        val byPriority = stats.byPriority.entries
+            .joinToString(", ") { "${it.key}: ${it.value}" }
+
+        val byStatus = stats.byStatus.entries
+            .joinToString(", ") { "${it.key}: ${it.value}" }
+
+        val avgTime = stats.avgResolutionTimeByPriority.entries
+            .joinToString("\n") { "   • ${it.key}: %.1f ч".format(it.value) }
+
+        return CommandResult.success(
+            """
+            📊 **Статистика по тикетам**
+
+            **Всего тикетов:** ${stats.totalTickets}
+
+            **Топ-5 категорий:**
+            $byCategory
+
+            **По приоритету:** $byPriority
+
+            **По статусу:** $byStatus
+
+            **Топ-5 ошибок:**
+            $topErrors
+
+            **Среднее время решения:**
+            $avgTime
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * Статус системы аналитики
+     */
+    private fun handleAnalyticsStatus(): CommandResult {
+        val status = analyticsService!!.getStatus()
+        return CommandResult.success(
+            """
+            🔧 **Статус аналитической системы**
+
+            • Инициализирована: ${if (status.initialized) "✅ Да" else "❌ Нет"}
+            • Тикетов загружено: ${status.totalTickets}
+            • Векторизовано: ${status.vectorizedTickets}
+            • Размерность embedding: ${status.embeddingDimension}
+            • Категорий: ${status.categories.size}
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * Обработка аналитического вопроса
+     */
+    private suspend fun handleAnalyticsQuery(query: String): CommandResult {
+        return try {
+            logger.info("Processing analytics query: $query")
+
+            val request = dev.skorobogatov.models.AnalyticsQueryRequest(
+                query = query,
+                topK = 10,
+                minSimilarity = 0.3
+            )
+
+            val response = analyticsService!!.analyzeQuery(request)
+
+            val relevantInfo = if (response.relevantTickets.isNotEmpty()) {
+                val tickets = response.relevantTickets.take(3).joinToString("\n") { result ->
+                    "   • [${result.ticket.id}] ${result.ticket.title} (${result.ticket.category}, similarity: %.2f)".format(result.similarity)
+                }
+                "\n\n**Релевантные тикеты:**\n$tickets"
+            } else ""
+
+            CommandResult.success(
+                """
+                📊 **Аналитика:** $query
+
+                ${response.answer}
+                $relevantInfo
+
+                _Проанализировано ${response.totalTicketsAnalyzed} тикетов за ${response.processingTimeMs}мс_
+                """.trimIndent()
+            )
+        } catch (e: Exception) {
+            logger.error("Error processing analytics query: ${e.message}", e)
+            CommandResult.error("Ошибка аналитики: ${e.message}")
+        }
     }
 
     /**

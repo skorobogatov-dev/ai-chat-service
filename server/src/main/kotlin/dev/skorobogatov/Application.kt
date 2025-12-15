@@ -153,11 +153,19 @@ fun Application.module() {
         appsDirectory = "src/main/resources/static/apps"
     )
 
+    // Создание сервиса аналитики тикетов
+    val analyticsService = dev.skorobogatov.services.AnalyticsService(
+        ollamaService = ollamaService,
+        ollamaChatService = ollamaChatService,
+        ticketCount = 500
+    )
+
     // Создание обработчика команд
     val commandHandler = dev.skorobogatov.services.CommandHandler(
         mcpService = mcpService,
         claudeService = claudeService,
-        appsService = appsService
+        appsService = appsService,
+        analyticsService = analyticsService
     )
 
     // Конфигурация плагинов
@@ -166,7 +174,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt, analyticsService)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -280,14 +288,20 @@ fun Application.module() {
         environment.log.info("Ollama chat service configured: $ollamaBaseUrl (model: $ollamaChatModel)")
         environment.log.info("RAG system initialized: ${vectorStoreService.getDocumentsCount()} documents, ${vectorStoreService.getTotalChunksCount()} chunks")
 
-        // Прогрев Ollama модели (загрузка в память)
+        // Прогрев Ollama модели и инициализация аналитики
         launch {
             try {
                 environment.log.info("Warming up Ollama model...")
                 ollamaService.getEmbedding("test")
                 environment.log.info("Ollama model warmed up successfully")
+
+                // Инициализация аналитического сервиса (генерация и векторизация тикетов)
+                environment.log.info("Initializing Analytics Service...")
+                analyticsService.initialize()
+                val status = analyticsService.getStatus()
+                environment.log.info("Analytics Service initialized: ${status.totalTickets} tickets, ${status.vectorizedTickets} vectorized")
             } catch (e: Exception) {
-                environment.log.warn("Failed to warm up Ollama model: ${e.message}")
+                environment.log.warn("Failed to initialize Ollama/Analytics: ${e.message}")
             }
         }
 

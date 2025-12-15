@@ -28,7 +28,7 @@ ollama:
   # Модель для векторизации текста (embeddings)
   model: "$OLLAMA_MODEL:nomic-embed-text"
   # Модель для генерации текста (chat)
-  chatModel: "$OLLAMA_CHAT_MODEL:qwen2.5:0.5b"
+  chatModel: "$OLLAMA_CHAT_MODEL:llama3.2"
 
 support:
   # Системный промпт для ассистента технической поддержки

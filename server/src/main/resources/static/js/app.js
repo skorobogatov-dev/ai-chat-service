@@ -842,6 +842,10 @@ class ChatApp {
             case '/dev':
                 await this.handleDevCommand(args);
                 break;
+            case '/analytics':
+            case '/a':
+                await this.handleAnalyticsCommand(args);
+                break;
             case '/help':
                 this.showHelpMessage();
                 break;
@@ -976,6 +980,51 @@ class ChatApp {
         document.addEventListener('keydown', escHandler);
 
         document.body.appendChild(modal);
+    }
+
+    /**
+     * Обработка команды /analytics для аналитики тикетов
+     */
+    async handleAnalyticsCommand(args) {
+        this.setInputState(false);
+
+        const fullCommand = args.length > 0 ? '/analytics ' + args.join(' ') : '/analytics';
+
+        const loadingMessage = args.length > 0 ? 'Анализирую данные...' : 'Загружаю справку...';
+        this.showLoadingIndicator(loadingMessage);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: fullCommand,
+                    sessionId: this.currentSessionId
+                })
+            });
+
+            this.hideLoadingIndicator();
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.sessionId && !this.currentSessionId) {
+                this.currentSessionId = data.sessionId;
+            }
+
+            this.addMessage(data.response, 'assistant');
+        } catch (error) {
+            this.hideLoadingIndicator();
+            this.addMessage(`Ошибка аналитики: ${error.message}`, 'error');
+        } finally {
+            this.setInputState(true);
+            this.messageInput.focus();
+        }
     }
 
     async handleReviewCommand(args) {
@@ -1226,6 +1275,19 @@ class ChatApp {
   • /review - проверить текущие изменения
   • /review main - проверить изменения в ветке main
   • /review 5364a66 - проверить конкретный коммит
+
+/analytics [вопрос] или /a [вопрос] - Аналитика тикетов
+  Задавайте вопросы по 500 тикетам техподдержки
+
+  Подкоманды:
+  • /analytics stats - статистика по тикетам
+  • /analytics status - статус системы
+
+  Примеры:
+  • /a какая ошибка чаще всего?
+  • /a топ-3 проблемы пользователей
+  • /a где пользователи теряются в воронке?
+  • /analytics stats
 
 /help - Показать это сообщение`;
 

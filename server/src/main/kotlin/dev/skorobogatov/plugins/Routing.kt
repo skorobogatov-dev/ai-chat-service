@@ -1,5 +1,6 @@
 package dev.skorobogatov.plugins
 
+import dev.skorobogatov.routes.analyticsRoutes
 import dev.skorobogatov.routes.appsRoutes
 import dev.skorobogatov.routes.chatRoutes
 import dev.skorobogatov.routes.embeddingRoutes
@@ -8,6 +9,7 @@ import dev.skorobogatov.routes.ollamaRoutes
 import dev.skorobogatov.routes.supportRoutes
 import dev.skorobogatov.routes.taskRoutes
 import dev.skorobogatov.routes.taskManagementRoutes
+import dev.skorobogatov.services.AnalyticsService
 import dev.skorobogatov.services.AppsService
 import dev.skorobogatov.services.ClaudeService
 import dev.skorobogatov.services.ConversationHistoryService
@@ -30,7 +32,8 @@ fun Application.configureRouting(
     vectorStoreService: dev.skorobogatov.services.VectorStoreService,
     commandHandler: dev.skorobogatov.services.CommandHandler,
     appsService: AppsService,
-    supportSystemPrompt: String
+    supportSystemPrompt: String,
+    analyticsService: AnalyticsService
 ) {
     routing {
         chatRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, ollamaChatService, commandHandler)
@@ -41,5 +44,6 @@ fun Application.configureRouting(
         ollamaRoutes(ollamaChatService)
         appsRoutes(appsService)
         supportRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, supportSystemPrompt)
+        analyticsRoutes(analyticsService)
     }
 }
