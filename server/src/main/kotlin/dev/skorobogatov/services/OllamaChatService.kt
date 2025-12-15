@@ -16,7 +16,8 @@ class OllamaChatService(
     private val baseUrl: String,
     private val defaultModel: String,
     private val maxTokens: Int = 4096,
-    private val defaultSystemPrompt: String? = null
+    private val defaultSystemPrompt: String? = null,
+    private val userProfileService: UserProfileService? = null
 ) {
     private val logger = LoggerFactory.getLogger(OllamaChatService::class.java)
     private val chatUrl = "$baseUrl/api/chat"
@@ -139,10 +140,17 @@ class OllamaChatService(
             else -> "standard"
         }
 
-        // Определяем системный промпт (приоритет: пользовательский > пресет > дефолтный)
-        val effectiveSystemPrompt = when {
+        // Определяем базовый системный промпт (приоритет: пользовательский > пресет > дефолтный)
+        val baseSystemPrompt = when {
             systemPrompt != null -> systemPrompt
             else -> getSystemPromptForPreset(effectivePreset) ?: defaultSystemPrompt
+        }
+
+        // Применяем персонализацию через профиль пользователя (если доступен)
+        val effectiveSystemPrompt = if (userProfileService?.hasProfile() == true) {
+            userProfileService.generatePersonalizedSystemPrompt(baseSystemPrompt)
+        } else {
+            baseSystemPrompt
         }
 
         // Определяем опции генерации (приоритет: пользовательские > пресет)

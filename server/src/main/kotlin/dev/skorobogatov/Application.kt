@@ -114,6 +114,11 @@ fun Application.module() {
         model = ollamaModel
     )
 
+    // Создание сервиса для работы с профилем пользователя
+    val userProfileService = dev.skorobogatov.services.UserProfileService(
+        profilePath = "user_profile.json"
+    )
+
     // Создание сервиса для работы с Ollama (chat/генерация текста)
     val ollamaChatModel = environment.config.propertyOrNull("ollama.chatModel")?.getString() ?: "llama3.2"
     val ollamaChatService = dev.skorobogatov.services.OllamaChatService(
@@ -121,7 +126,8 @@ fun Application.module() {
         baseUrl = ollamaBaseUrl,
         defaultModel = ollamaChatModel,
         maxTokens = maxTokens,
-        defaultSystemPrompt = systemPrompt
+        defaultSystemPrompt = systemPrompt,
+        userProfileService = userProfileService
     )
 
     // Создание сервиса для разбиения текста на чанки
@@ -174,7 +180,7 @@ fun Application.module() {
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt, analyticsService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt, analyticsService, userProfileService)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()
@@ -286,6 +292,11 @@ fun Application.module() {
         environment.log.info("Using Claude model: $model")
         environment.log.info("Ollama embeddings service configured: $ollamaBaseUrl (model: $ollamaModel)")
         environment.log.info("Ollama chat service configured: $ollamaBaseUrl (model: $ollamaChatModel)")
+        if (userProfileService.hasProfile()) {
+            environment.log.info("User profile loaded: ${userProfileService.getProfile()?.name ?: "Anonymous"}")
+        } else {
+            environment.log.info("User profile not found. Personalization disabled.")
+        }
         environment.log.info("RAG system initialized: ${vectorStoreService.getDocumentsCount()} documents, ${vectorStoreService.getTotalChunksCount()} chunks")
 
         // Прогрев Ollama модели и инициализация аналитики

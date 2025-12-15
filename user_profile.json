@@ -1,0 +1,128 @@
+{
+  "name": "Денис",
+  "role": "Senior Software Engineer",
+  "timezone": "Europe/Moscow",
+  "preferredLanguage": "ru",
+  "location": "Москва, Россия",
+  "birthDate": "1990-05-15",
+  "communicationStyle": {
+    "responseLength": "BALANCED",
+    "formality": "FRIENDLY",
+    "technicalLevel": "ADVANCED",
+    "useEmojis": false,
+    "preferredTone": "прямолинейный и конструктивный"
+  },
+  "workContext": {
+    "currentProjects": [
+      "AI Chat Service с интеграцией Ollama",
+      "MCP серверы для расширения функциональности",
+      "RAG система для контекстного поиска"
+    ],
+    "goals": [
+      "Освоить продвинутые техники работы с LLM",
+      "Построить эффективную систему персонализации AI",
+      "Интеграция локальных и облачных LLM моделей"
+    ],
+    "challenges": [
+      "Оптимизация производительности Ollama",
+      "Балансировка между качеством и скоростью ответов"
+    ],
+    "workingHours": "10:00 - 19:00 MSK",
+    "notes": "Предпочитаю использовать локальные решения для конфиденциальности данных"
+  },
+  "technicalStack": {
+    "programmingLanguages": [
+      "Kotlin",
+      "Python",
+      "TypeScript",
+      "Go"
+    ],
+    "frameworks": [
+      "Ktor",
+      "Spring Boot",
+      "React",
+      "FastAPI"
+    ],
+    "tools": [
+      "IntelliJ IDEA",
+      "Git",
+      "Docker",
+      "Kubernetes",
+      "Gradle"
+    ],
+    "preferredCodingStyle": "Clean Code, SOLID принципы, функциональное программирование где уместно",
+    "operatingSystem": "macOS",
+    "ide": "IntelliJ IDEA Ultimate"
+  },
+  "personalInterests": {
+    "hobbies": [
+      "Программирование side-проектов",
+      "Чтение технической литературы",
+      "Шахматы",
+      "Фотография"
+    ],
+    "favoriteBooks": [
+      "Чистая архитектура (Роберт Мартин)",
+      "Совершенный код (Стив Макконнелл)",
+      "Thinking, Fast and Slow (Дэниел Канеман)",
+      "Мастер и Маргарита (Михаил Булгаков)",
+      "1984 (Джордж Оруэлл)"
+    ],
+    "favoriteMovies": [
+      "Матрица",
+      "Начало",
+      "Интерстеллар",
+      "Бойцовский клуб",
+      "Blade Runner 2049"
+    ],
+    "favoriteTvShows": [
+      "Silicon Valley",
+      "Mr. Robot",
+      "Black Mirror",
+      "Breaking Bad"
+    ],
+    "musicGenres": [
+      "Electronic",
+      "Progressive Rock",
+      "Ambient",
+      "Post-Rock"
+    ],
+    "favoriteArtists": [
+      "Pink Floyd",
+      "Daft Punk",
+      "Hans Zimmer",
+      "Radiohead"
+    ],
+    "sports": [
+      "Бег",
+      "Плавание",
+      "Велоспорт"
+    ],
+    "learningGoals": [
+      "Глубокое изучение архитектуры LLM",
+      "Machine Learning и Neural Networks",
+      "Distributed Systems"
+    ],
+    "favoriteTopics": [
+      "Искусственный интеллект",
+      "Квантовые вычисления",
+      "Философия сознания",
+      "Космос и астрофизика"
+    ],
+    "travelDestinations": [
+      "Япония",
+      "Исландия",
+      "Новая Зеландия",
+      "Норвегия"
+    ],
+    "favoriteFood": [
+      "Суши",
+      "Итальянская кухня",
+      "Грузинская кухня"
+    ],
+    "pets": [
+      "Кот по имени Байт"
+    ]
+  },
+  "additionalInfo": "Люблю глубоко погружаться в технические детали. Ценю четкость, лаконичность и практичность. Всегда открыт к новым технологиям и подходам. Считаю, что AI должен быть помощником, а не заменой человеческого мышления."
+}

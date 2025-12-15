@@ -45,6 +45,10 @@ ai-chat-service/
 | OLLAMA_MODEL | Модель для embeddings | nomic-embed-text |
 | OLLAMA_CHAT_MODEL | Модель для chat (локальная LLM) | llama3.2 |
 
+### Персонализация
+- **user_profile.json** - профиль пользователя для персонализации ответов Ollama
+- См. подробную документацию в [PERSONALIZATION.md](PERSONALIZATION.md)
+
 ## API Endpoints
 
 ### Chat API
@@ -176,6 +180,23 @@ curl http://localhost:8080/api/ollama/status
 curl http://localhost:8080/api/ollama/models/llama3.2/check
 ```
 
+### Profile API (Персонализация)
+```bash
+# Получить профиль пользователя
+curl http://localhost:8080/api/profile
+
+# Статус персонализации
+curl http://localhost:8080/api/profile/status
+
+# Перезагрузить профиль из файла
+curl -X POST http://localhost:8080/api/profile/reload
+
+# Посмотреть сгенерированный системный промпт (отладка)
+curl http://localhost:8080/api/profile/system-prompt
+```
+
+Подробнее см. [PERSONALIZATION.md](PERSONALIZATION.md)
+
 ### Swagger UI
 - **Swagger UI**: http://localhost:8080/swagger
 - **OpenAPI Spec**: http://localhost:8080/openapi
@@ -202,6 +223,7 @@ curl http://localhost:8080/api/ollama/models/llama3.2/check
 | MCPService | MCP клиент, подключение и вызов инструментов |
 | OllamaService | Embeddings через Ollama |
 | RAGService | RAG индекс и поиск |
+| UserProfileService | Персонализация ответов на основе профиля пользователя |
 
 ### Data Models
 
@@ -244,6 +266,15 @@ Claude AI автоматически использует MCP инструмен
 - `read_file()` - контекст файлов
 - RAG - проверка соответствия стандартам
 
+### Персонализация AI (Ollama)
+1. Загрузка профиля из `user_profile.json`
+2. Генерация персонализированного системного промпта
+3. Обращение к пользователю по имени
+4. Адаптация стиля ответов под предпочтения
+5. Учет технического стека и контекста проектов
+6. Использование культурных отсылок (книги, фильмы, музыка)
+См. [PERSONALIZATION.md](PERSONALIZATION.md) для деталей
+
 ## External Dependencies
 - **Anthropic Claude API** (requires API key) - облачная LLM
 - **Ollama** (optional) - локальная LLM (llama3.2, mistral, etc.) и embeddings (nomic-embed-text)
@@ -263,5 +294,6 @@ Claude AI автоматически использует MCP инструмен
 | Reranking | ✅ | ❌ |
 | История/сжатие | ✅ | ✅ |
 | Генерация названий | ✅ | ✅ |
+| Персонализация | ❌ | ✅ |
 | Требует API ключ | ✅ | ❌ |
 | Работает локально | ❌ | ✅ |

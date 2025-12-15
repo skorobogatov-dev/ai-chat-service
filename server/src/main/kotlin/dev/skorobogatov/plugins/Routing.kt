@@ -9,6 +9,7 @@ import dev.skorobogatov.routes.ollamaRoutes
 import dev.skorobogatov.routes.supportRoutes
 import dev.skorobogatov.routes.taskRoutes
 import dev.skorobogatov.routes.taskManagementRoutes
+import dev.skorobogatov.routes.profileRoutes
 import dev.skorobogatov.services.AnalyticsService
 import dev.skorobogatov.services.AppsService
 import dev.skorobogatov.services.ClaudeService
@@ -17,6 +18,7 @@ import dev.skorobogatov.services.MCPService
 import dev.skorobogatov.services.OllamaService
 import dev.skorobogatov.services.OllamaChatService
 import dev.skorobogatov.services.SchedulerService
+import dev.skorobogatov.services.UserProfileService
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -33,7 +35,8 @@ fun Application.configureRouting(
     commandHandler: dev.skorobogatov.services.CommandHandler,
     appsService: AppsService,
     supportSystemPrompt: String,
-    analyticsService: AnalyticsService
+    analyticsService: AnalyticsService,
+    userProfileService: UserProfileService
 ) {
     routing {
         chatRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, ollamaChatService, commandHandler)
@@ -45,5 +48,6 @@ fun Application.configureRouting(
         appsRoutes(appsService)
         supportRoutes(claudeService, historyService, mcpService, vectorStoreService, ollamaService, supportSystemPrompt)
         analyticsRoutes(analyticsService)
+        profileRoutes(userProfileService)
     }
 }
