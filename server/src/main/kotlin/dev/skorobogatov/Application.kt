@@ -174,13 +174,32 @@ fun Application.module() {
         analyticsService = analyticsService
     )
 
+    // Создание сервиса для конвертации аудио
+    val audioConverterService = dev.skorobogatov.services.AudioConverterService()
+
+    // Создание сервиса распознавания речи (Vosk)
+    val voiceModelPath = environment.config.propertyOrNull("vosk.modelPath")?.getString() ?: "models/vosk-model-ru-0.42"
+    val speechRecognitionService = dev.skorobogatov.services.SpeechRecognitionService(voiceModelPath)
+
+    // Инициализация Vosk модели при старте
+    launch {
+        try {
+            environment.log.info("Initializing Vosk speech recognition model...")
+            speechRecognitionService.initialize()
+            environment.log.info("Vosk speech recognition initialized successfully")
+        } catch (e: Exception) {
+            environment.log.error("Failed to initialize Vosk: ${e.message}")
+            environment.log.warn("Voice recognition will not be available. Make sure Vosk model is installed at: $voiceModelPath")
+        }
+    }
+
     // Конфигурация плагинов
     configureSerialization()
     configureHTTP()
     configureStatusPages()
     configureStaticContent()
     configureOpenAPI()
-    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt, analyticsService, userProfileService)
+    configureRouting(claudeService, historyService, mcpService, schedulerService, ollamaService, ollamaChatService, chunkerService, vectorStoreService, commandHandler, appsService, supportSystemPrompt, analyticsService, userProfileService, speechRecognitionService, audioConverterService)
 
     // Автоматическое подключение к MCP серверам при старте
     val mcpServerUrl = environment.config.propertyOrNull("mcp.serverUrl")?.getString()

@@ -63,6 +63,14 @@
                                 autocomplete="off"
                                 required
                             >
+                            <div id="recordingIndicator" class="recording-indicator" style="display: none;">
+                                <span class="recording-dot"></span>
+                                <span id="recordingTimer">0:00</span>
+                                <span>Отпустите, чтобы отправить</span>
+                            </div>
+                            <button type="button" id="voiceButton" class="voice-button" title="Удерживайте для записи голоса">
+                                🎤
+                            </button>
                             <button type="submit" id="sendButton">
                                 Отправить
                             </button>
@@ -478,6 +486,7 @@
     </div>
 
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/voice.js"></script>
     <script src="/static/js/support.js"></script>
 </body>
 </html>

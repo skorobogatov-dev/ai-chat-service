@@ -55,6 +55,10 @@ dependencies {
     // MCP SDK (Model Context Protocol) - для подключения к MCP серверам
     implementation("io.modelcontextprotocol:kotlin-sdk:0.6.0")
 
+    // Vosk Speech Recognition (для распознавания речи)
+    implementation("net.java.dev.jna:jna:5.13.0")
+    implementation("com.alphacephei:vosk:0.3.38")
+
     // Testing
     testImplementation("io.ktor:ktor-server-test-host:$ktor_version")
     testImplementation("io.ktor:ktor-client-mock:$ktor_version")

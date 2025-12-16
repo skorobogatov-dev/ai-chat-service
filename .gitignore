@@ -48,3 +48,5 @@ embeddings_output/
 scheduled_tasks/
 *.log
 .kotlin/
+server/models/
+deploy/

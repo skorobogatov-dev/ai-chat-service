@@ -2457,4 +2457,9 @@ document.addEventListener('DOMContentLoaded', () => {
     new MCPManager();
     new TaskManager();
     new AppsManager();
+
+    // Initialize voice recorder
+    if (window.VoiceRecorder) {
+        window.voiceRecorder = new VoiceRecorder(window.chatApp);
+    }
 });

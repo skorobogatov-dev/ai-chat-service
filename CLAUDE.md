@@ -92,6 +92,45 @@ curl -X POST http://localhost:8080/api/chat \
 - `ragMinSimilarity` - минимальное сходство (default: 0.5)
 - `useReranking` - включить reranking (default: false, только для Claude)
 
+### Voice API (Speech Recognition)
+```bash
+# Отправить голосовое сообщение (multipart/form-data)
+curl -X POST http://localhost:8080/api/voice \
+  -F "audio=@voice.webm" \
+  -F "provider=ollama" \
+  -F "model=llama3.2" \
+  -F "sessionId=uuid-optional"
+
+# Проверить статус Vosk сервиса
+curl http://localhost:8080/api/voice/status
+```
+
+**Параметры Voice Request:**
+- `audio` (обязательно) - аудиофайл (WAV, WebM, MP3, OGG)
+- `provider` - провайдер LLM: "claude" или "ollama" (default: ollama)
+- `model` - модель для обработки распознанного текста
+- `sessionId` - ID сессии для продолжения диалога (опционально)
+
+**Возвращает VoiceResponse:**
+- `transcribedText` - распознанный текст
+- `response` - ответ LLM
+- `sessionId` - ID сессии
+- `transcriptionTimeMs` - время распознавания
+- `llmResponseTimeMs` - время ответа LLM
+- `totalTimeMs` - общее время обработки
+- Токены и другие метрики
+
+**Веб-интерфейс:**
+- Кнопка микрофона в поле ввода сообщения
+- Нажать и удерживать для записи голоса
+- Отпустить, чтобы отправить на распознавание
+- Поддерживает браузеры с MediaRecorder API
+
+**Технологии:**
+- **Vosk** - локальное распознавание речи (offline, без API ключей)
+- **FFmpeg** - конвертация аудио форматов (WebM → WAV)
+- **Русский язык** - модель vosk-model-ru-0.42 (~1.8GB)
+
 ### MCP API
 ```bash
 # Подключение к MCP серверу
